@@ -1,0 +1,27 @@
+{
+  "entities": {
+    "service_records": {
+      "title": "Service Records",
+      "description": "Auto service customer records and maintenance logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "customerName": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "carPlate": { "type": "string" },
+        "carModel": { "type": "string" },
+        "mileageKm": { "type": ["number", "string"] },
+        "replacedOil": { "type": "string" },
+        "replacedParts": { "type": "string" },
+        "partsToReplace": { "type": "string" },
+        "status": { "type": "string" },
+        "costUzs": { "type": ["number", "string"] },
+        "notes": { "type": "string" },
+        "isOffline": { "type": "boolean" },
+        "syncedAt": { "type": "string" }
+      },
+      "required": ["id", "createdAt", "customerName", "phoneNumber", "carPlate"]
+    }
+  }
+}

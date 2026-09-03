@@ -1,0 +1,22 @@
+{
+  "short_name": "Daewoo Buloqboshi",
+  "name": "Daewoo Buloqboshi Auto Servis - Baza",
+  "description": "Daewoo Buloqboshi Auto Servis mijozlari va xizmatlar hisobi PWA",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3202/3202926.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3202/3202926.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "display": "standalone",
+  "orientation": "portrait"
+}

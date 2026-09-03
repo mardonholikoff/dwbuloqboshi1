@@ -1,0 +1,6 @@
+{
+  "name": "Daewoo Buloqboshi Auto Servis",
+  "description": "Daewoo Buloqboshi avtoservisi uchun mijozlar va zapchastlar hisobi platformasi.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
