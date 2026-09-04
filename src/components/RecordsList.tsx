@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ServiceRecord, RecordStatusFilter } from '../types';
 import { RecordCard } from './RecordCard';
+import { CustomerCrmSection } from './CustomerCrmSection';
 import { createAdminLog } from '../lib/adminSession';
 import { checkIsOilRecord, getDaysAgo } from '../lib/oilUtils';
 import {
@@ -21,7 +22,8 @@ import {
   Calendar,
   X,
   Eye,
-  EyeOff
+  EyeOff,
+  Users
 } from 'lucide-react';
 
 interface RecordsListProps {
@@ -34,6 +36,7 @@ interface RecordsListProps {
   onSyncRecord?: (id: string) => void;
   onSyncAllOffline?: () => void;
   onOpenAnalyticsModal?: () => void;
+  onUpdateCustomerInfo?: (oldPlate: string, newPlate: string, newPhone: string, newModel: string) => void;
   username?: string;
 }
 
@@ -101,8 +104,11 @@ export const RecordsList: React.FC<RecordsListProps> = ({
   onSyncRecord,
   onSyncAllOffline,
   onOpenAnalyticsModal,
+  onUpdateCustomerInfo,
   username = 'daewoobuloqboshi',
 }) => {
+  const isAdmin = username === 'admindw' || username === 'dwadmin';
+  const [activeMainTab, setActiveMainTab] = useState<'crm' | 'records'>(isAdmin ? 'crm' : 'records');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<RecordStatusFilter>('barchasi');
   const [dateScope, setDateScope] = useState<'today' | 'all'>('today'); // Default to TODAY only as requested
@@ -142,6 +148,16 @@ export const RecordsList: React.FC<RecordsListProps> = ({
     setViewMode(mode);
     createAdminLog("Ko'rinish Rejimi O'zgartirildi", `Rejim: ${mode === 'table' ? 'Excel Jadval' : 'Kartalar'}`, username);
   };
+
+  // Count unique customers for CRM tab
+  const uniqueCustomersCount = useMemo(() => {
+    const set = new Set<string>();
+    records.forEach((r) => {
+      const key = (r.carPlate || '').toUpperCase().trim() || (r.phoneNumber || '').trim();
+      if (key) set.add(key);
+    });
+    return set.size;
+  }, [records]);
 
   // Filtered and sorted list
   const filteredRecords = useMemo(() => {
@@ -276,8 +292,73 @@ export const RecordsList: React.FC<RecordsListProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Search & Filter Controls Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg space-y-4">
+      {/* TOP PRIMARY NAVIGATION: YAGONA MIJOZLAR CRM VS XIZMATLAR RO'YXATI (Faqat Admin uchun) */}
+      {isAdmin && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-2.5 shadow-xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800/80">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveMainTab('crm');
+                createAdminLog("CRM Bo'limiga O'tildi", "Yagona mijozlar CRM jadvali ochildi", username);
+              }}
+              className={`px-4 py-2.5 rounded-lg text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+                activeMainTab === 'crm'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Users className="w-4 h-4 text-blue-400" />
+              <span>Mijozlar CRM ({uniqueCustomersCount})</span>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold">
+                Takrorsiz
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveMainTab('records');
+                createAdminLog("Xizmatlar Tarixiga O'tildi", "Xizmatlar ro'yxati ochildi", username);
+              }}
+              className={`px-4 py-2.5 rounded-lg text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+                activeMainTab === 'records'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Table className="w-4 h-4" />
+              <span>Xizmatlar Tarixi ({records.length})</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-slate-400 font-medium px-2">
+            {activeMainTab === 'crm' ? (
+              <span className="flex items-center gap-1.5 text-emerald-400">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Yagona mijozlar bazasi • .xlsx eksport • Shaxsiy chuqur tahlil</span>
+              </span>
+            ) : (
+              <span>Barcha avtomobillarga ko'rsatilgan xizmatlar tarixi</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isAdmin && activeMainTab === 'crm' ? (
+        <CustomerCrmSection
+          records={records}
+          username={username}
+          onSelectCustomerForHistory={onSelectCustomer}
+          onEditRecord={onEdit}
+          onPrintRecord={onPrint}
+          onOpenNewModal={onOpenNewModal}
+          onUpdateCustomerInfo={onUpdateCustomerInfo}
+        />
+      ) : (
+        <>
+          {/* Search & Filter Controls Bar */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           {/* Live Search Input */}
           <div className="relative flex-1">
@@ -767,6 +848,8 @@ export const RecordsList: React.FC<RecordsListProps> = ({
             </table>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* Full-Screen Table Modal (Alohida Ekran) */}

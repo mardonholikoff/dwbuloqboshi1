@@ -22,9 +22,12 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
 
     setTimeout(() => {
       try {
-        if (cleanUsername === 'daewoobuloqboshi' && cleanPassword === 'buloqboshidaewoo') {
+        if (cleanUsername.toLowerCase() === 'daewoobuloqboshi' && cleanPassword === 'buloqboshidaewoo') {
           onLoginSuccess('daewoobuloqboshi');
-        } else if (cleanUsername === 'admindw' && cleanPassword === 'dwadmin') {
+        } else if (
+          (cleanUsername.toLowerCase() === 'admindw' || cleanUsername.toLowerCase() === 'dwadmin') &&
+          (cleanPassword === 'dwadmin' || cleanPassword === 'admindw')
+        ) {
           onLoginSuccess('admindw');
         } else {
           setError("Login yoki parol xato! Ma'lumotlarni tekshirib qayta kiriting.");

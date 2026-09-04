@@ -8,7 +8,8 @@ import {
   Zap,
   Clock,
   UserCheck,
-  Database
+  Database,
+  Users
 } from 'lucide-react';
 import { DeviceSession, AdminLog, ServiceRecord } from '../types';
 import {
@@ -26,6 +27,7 @@ import {
   clearAllRecordsFromCloud
 } from '../lib/firebase';
 import { AdminRecordsManager } from './AdminRecordsManager';
+import { CustomerCrmSection } from './CustomerCrmSection';
 
 interface AdminStandaloneDashboardProps {
   username: string;
@@ -34,6 +36,7 @@ interface AdminStandaloneDashboardProps {
   onSaveRecord?: (record: ServiceRecord) => Promise<void> | void;
   onDeleteRecord?: (id: string) => Promise<void> | void;
   onClearAllRecords?: () => Promise<void> | void;
+  onUpdateCustomerInfo?: (oldPlate: string, newPlate: string, newPhone: string, newModel: string) => Promise<void> | void;
 }
 
 export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> = ({
@@ -43,8 +46,9 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
   onSaveRecord: propSaveRecord,
   onDeleteRecord: propDeleteRecord,
   onClearAllRecords: propClearAllRecords,
+  onUpdateCustomerInfo: propUpdateCustomerInfo,
 }) => {
-  const [activeTab, setActiveTab] = useState<'records' | 'sessions' | 'logs'>('records');
+  const [activeTab, setActiveTab] = useState<'crm' | 'records' | 'sessions' | 'logs'>('crm');
 
   const [sessions, setSessions] = useState<DeviceSession[]>([]);
   const [logs, setLogs] = useState<AdminLog[]>([]);
@@ -99,6 +103,61 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
       await clearAllRecordsFromCloud();
     }
   };
+
+  // Update customer info handler
+  const handleUpdateCustomerInfo = async (
+    oldPlate: string,
+    newPlate: string,
+    newPhone: string,
+    newModel: string
+  ) => {
+    if (propUpdateCustomerInfo) {
+      await propUpdateCustomerInfo(oldPlate, newPlate, newPhone, newModel);
+    } else {
+      const cleanOldPlate = oldPlate.toUpperCase().trim();
+      const cleanNewPlate = newPlate.toUpperCase().trim();
+      const cleanPhone = newPhone.trim();
+      const cleanModel = newModel.trim();
+
+      const updatedRecords = records.map((r) => {
+        if (r.carPlate.toUpperCase().trim() === cleanOldPlate) {
+          return {
+            ...r,
+            carPlate: cleanNewPlate,
+            phoneNumber: cleanPhone,
+            carModel: cleanModel || r.carModel,
+          };
+        }
+        return r;
+      });
+
+      setRecords(updatedRecords);
+
+      const recordsToSync = updatedRecords.filter(
+        (r) => r.carPlate.toUpperCase().trim() === cleanNewPlate
+      );
+      for (const rec of recordsToSync) {
+        await saveRecordToCloud(rec);
+      }
+
+      showToast(`Mijoz (${cleanNewPlate}) ma'lumotlari muvaffaqiyatli yangilandi!`);
+      await createAdminLog(
+        "Mijoz Ma'lumotlari Tahrirlandi",
+        `Avto raqam: ${cleanOldPlate} -> ${cleanNewPlate}, Tel: ${cleanPhone}, Model: ${cleanModel}`,
+        username
+      );
+    }
+  };
+
+  // Unique customers count for CRM tab badge
+  const uniqueCustomersCount = useMemo(() => {
+    const set = new Set<string>();
+    records.forEach((r) => {
+      const key = (r.carPlate || '').toUpperCase().trim() || (r.phoneNumber || '').trim();
+      if (key) set.add(key);
+    });
+    return set.size;
+  }, [records]);
 
   // Kick session
   const handleKickSession = async (session: DeviceSession) => {
@@ -178,38 +237,39 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-500 selection:text-white">
       {/* Top Navbar */}
-      <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-2xl">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-purple-600/30">
-              <Shield className="w-5 h-5" />
+      <header className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 shadow-2xl">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 flex items-center justify-between gap-2.5 sm:gap-4">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-purple-600/30 shrink-0">
+              <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-black text-white tracking-tight">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h1 className="text-sm sm:text-base md:text-lg font-black text-white tracking-tight leading-tight truncate">
                   Super Admin Markazi
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-extrabold text-[10px] border border-purple-500/30">
+                <span className="px-1.5 sm:px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-extrabold text-[9px] sm:text-[10px] border border-purple-500/30 shrink-0 leading-none">
                   admindw 🔑
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">
-                Faol seanslar va tizim kirish loglari monitoringi
+              <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 leading-tight truncate">
+                Yagona CRM, xizmatlar va xavfsizlik nazorati
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs font-mono text-purple-300">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="hidden md:flex items-center gap-2 bg-slate-950 px-2.5 py-1.5 rounded-xl border border-slate-800 text-xs font-mono text-purple-300">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span>{username}</span>
             </div>
 
             <button
               onClick={onLogout}
-              className="px-4 py-2 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 text-xs font-extrabold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-950/80 hover:bg-red-900 active:bg-red-950 text-red-300 border border-red-800/80 text-xs font-extrabold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-md shrink-0"
+              title="Tizimdan chiqish"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-3.5 h-3.5" />
               <span>Chiqish</span>
             </button>
           </div>
@@ -225,47 +285,132 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
       )}
 
       {/* Main Container */}
-      <main className="max-w-6xl mx-auto px-3.5 sm:px-6 lg:px-8 py-6 sm:py-8 pb-16 flex-1 w-full space-y-6 my-2 sm:my-4">
-        {/* Navigation Tabs */}
-        <div className="bg-slate-900 p-2 rounded-2xl border border-slate-800 flex items-center gap-2 overflow-x-auto shadow-lg">
+      <main className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-16 flex-1 w-full space-y-4 sm:space-y-6">
+        {/* Navigation Tabs - Compact, Responsive Grid (NO HORIZONTAL SCROLL ON ANY SCREEN) */}
+        <div className="bg-slate-900 p-1.5 sm:p-2 rounded-2xl border border-slate-800 grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-2 shadow-xl">
           <button
+            type="button"
+            onClick={() => {
+              setActiveTab('crm');
+              createAdminLog("CRM Bo'limiga O'tildi", "Yagona mijozlar CRM jadvali ochildi", username);
+            }}
+            className={`w-full py-2.5 px-2.5 sm:px-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-between gap-1.5 cursor-pointer ${
+              activeTab === 'crm'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/30 border border-purple-400/30'
+                : 'bg-slate-950/60 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800/80'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <Users className={`w-4 h-4 shrink-0 ${activeTab === 'crm' ? 'text-white' : 'text-purple-400'}`} />
+              <span className="truncate">Mijozlar CRM</span>
+            </div>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold shrink-0 ${
+                activeTab === 'crm' ? 'bg-white/20 text-white' : 'bg-slate-800 text-purple-300'
+              }`}
+            >
+              {uniqueCustomersCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('records')}
-            className={`px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+            className={`w-full py-2.5 px-2.5 sm:px-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-between gap-1.5 cursor-pointer ${
               activeTab === 'records'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/30 border border-purple-400/30'
+                : 'bg-slate-950/60 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800/80'
             }`}
           >
-            <Database className="w-4 h-4" />
-            <span>📋 Xizmatlar & Mijozlar Bazasi ({records.length})</span>
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <Database className={`w-4 h-4 shrink-0 ${activeTab === 'records' ? 'text-white' : 'text-blue-400'}`} />
+              <span className="truncate">Xizmatlar Bazasi</span>
+            </div>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold shrink-0 ${
+                activeTab === 'records' ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-300'
+              }`}
+            >
+              {records.length}
+            </span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('sessions')}
-            className={`px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+            className={`w-full py-2.5 px-2.5 sm:px-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-between gap-1.5 cursor-pointer ${
               activeTab === 'sessions'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/30 border border-purple-400/30'
+                : 'bg-slate-950/60 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800/80'
             }`}
           >
-            <Smartphone className="w-4 h-4" />
-            <span>📱 Faol daewoobuloqboshi Seanslari ({sortedSessions.length})</span>
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <Smartphone className={`w-4 h-4 shrink-0 ${activeTab === 'sessions' ? 'text-white' : 'text-emerald-400'}`} />
+              <span className="truncate">Faol Seanslar</span>
+            </div>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold shrink-0 ${
+                activeTab === 'sessions' ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-300'
+              }`}
+            >
+              {sortedSessions.length}
+            </span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('logs')}
-            className={`px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+            className={`w-full py-2.5 px-2.5 sm:px-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-between gap-1.5 cursor-pointer ${
               activeTab === 'logs'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/30 border border-purple-400/30'
+                : 'bg-slate-950/60 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800/80'
             }`}
           >
-            <FileText className="w-4 h-4" />
-            <span>📊 Tizim va Kirish Loglari ({filteredLogs.length})</span>
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <FileText className={`w-4 h-4 shrink-0 ${activeTab === 'logs' ? 'text-white' : 'text-amber-400'}`} />
+              <span className="truncate">Tizim Loglari</span>
+            </div>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold shrink-0 ${
+                activeTab === 'logs' ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-300'
+              }`}
+            >
+              {filteredLogs.length}
+            </span>
           </button>
         </div>
 
-        {/* TAB 0: All Service Records & Customers Management */}
+        {/* Informative Context Bar (Compact & Clean on Mobile) */}
+        <div className="px-3 py-2 bg-slate-900/60 border border-slate-800/70 rounded-xl flex items-center justify-between text-[11px] text-slate-400">
+          <div className="flex items-center gap-1.5 truncate">
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse shrink-0" />
+            <span className="truncate">
+              {activeTab === 'crm' && "👥 Takrorlanmas mijozlar bazasi • Chuqur tahlil va .xlsx eksport"}
+              {activeTab === 'records' && "📋 Barcha xizmat yozuvlari • Chek chiqarish va tahrirlash"}
+              {activeTab === 'sessions' && "📱 Faol daewoobuloqboshi xodim seanslari monitoringi"}
+              {activeTab === 'logs' && "📊 Tizim harakatlari va xavfsizlik loglari xronologiyasi"}
+            </span>
+          </div>
+          <span className="text-[10px] font-mono text-purple-400 shrink-0 ml-2 hidden sm:inline">
+            admindw nazorati
+          </span>
+        </div>
+
+        {/* TAB 0: Yagona Mijozlar CRM Markazi */}
+        {activeTab === 'crm' && (
+          <CustomerCrmSection
+            records={records}
+            username={username}
+            onSelectCustomerForHistory={(plate, name) => {
+              setActiveTab('records');
+              showToast(`${name || plate} bo'yicha barcha xizmatlar ochildi`);
+            }}
+            onEditRecord={handleSaveRecord}
+            onUpdateCustomerInfo={handleUpdateCustomerInfo}
+          />
+        )}
+
+        {/* TAB 1: All Service Records & Customers Management */}
         {activeTab === 'records' && (
           <AdminRecordsManager
             records={records}
@@ -279,23 +424,23 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
         {/* TAB 1: Active Devices */}
         {activeTab === 'sessions' && (
           <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-slate-400 font-semibold">Monitoring:</span>
-                <span className="px-3 py-1 rounded-xl bg-purple-950/80 border border-purple-800/80 text-purple-300 text-xs font-extrabold flex items-center gap-1.5">
+                <span className="px-2.5 py-1 rounded-xl bg-purple-950/80 border border-purple-800/80 text-purple-300 text-xs font-extrabold flex items-center gap-1.5">
                   <UserCheck className="w-3.5 h-3.5 text-purple-400" />
                   <span>Faqat daewoobuloqboshi seanslari ({sortedSessions.length})</span>
                 </span>
               </div>
 
               <span className="text-purple-400 font-bold font-mono text-xs">
-                {sortedSessions.length} ta faol seans ko'rsatilmoqda
+                {sortedSessions.length} ta seans aniqlandi
               </span>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
               {sortedSessions.length === 0 ? (
-                <div className="col-span-full p-12 text-center text-slate-500 bg-slate-900 rounded-2xl border border-slate-800">
+                <div className="col-span-full p-10 text-center text-slate-500 bg-slate-900 rounded-2xl border border-slate-800 text-xs">
                   Hozircha daewoobuloqboshi foydalanuvchisi uchun faol seanslar topilmadi.
                 </div>
               ) : (
@@ -308,68 +453,68 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
                   return (
                     <div
                       key={s.id}
-                      className={`p-5 rounded-2xl border transition-all space-y-4 ${
+                      className={`p-4 sm:p-5 rounded-2xl border transition-all space-y-3.5 ${
                         isMe
                           ? 'bg-purple-950/30 border-purple-500/40 shadow-xl shadow-purple-950/20'
                           : 'bg-slate-900 border-slate-800 hover:border-slate-700'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2">
+                      <div className="flex items-start justify-between gap-2.5">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span
-                              className={`w-3 h-3 rounded-full ${
+                              className={`w-2.5 h-2.5 rounded-full ${
                                 isOnlineNow ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'
                               }`}
                             />
-                            <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-                              {s.deviceName}
+                            <h3 className="text-sm sm:text-base font-extrabold text-white flex items-center gap-1.5 truncate">
+                              <span>{s.deviceName}</span>
                               {isMe && (
-                                <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px] border border-purple-500/30 font-mono">
+                                <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[9px] border border-purple-500/30 font-mono">
                                   Sizning qurilma
                                 </span>
                               )}
                             </h3>
                           </div>
-                          <p className="text-xs text-slate-400 mt-1 font-mono">
+                          <p className="text-[11px] sm:text-xs text-slate-400 mt-1 font-mono truncate">
                             Foydalanuvchi: <strong className="text-purple-300">{s.username}</strong> • Platforma: {s.platform}
                           </p>
                         </div>
 
                         <span
-                          className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-bold border shrink-0 ${
                             isOnlineNow
                               ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
                               : 'bg-slate-950 text-slate-500 border-slate-800'
                           }`}
                         >
-                          {isOnlineNow ? '🟢 Online' : '⚪ Offline / Chiqqan'}
+                          {isOnlineNow ? '🟢 Online' : '⚪ Chiqqan'}
                         </span>
                       </div>
 
                       {/* Technical Details */}
-                      <div className="grid grid-cols-2 gap-3 text-xs bg-slate-950 p-3 rounded-xl border border-slate-800/80 font-mono">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs bg-slate-950 p-2.5 sm:p-3 rounded-xl border border-slate-800/80 font-mono">
                         <div>
                           <span className="text-slate-500 block text-[10px]">IP Manzil:</span>
-                          <span className="text-purple-300 font-bold">{s.ipAddress || 'Mavjud emas'}</span>
+                          <span className="text-purple-300 font-bold break-all">{s.ipAddress || 'Mavjud emas'}</span>
                         </div>
                         <div>
                           <span className="text-slate-500 block text-[10px]">Kirgan vaqti:</span>
-                          <span className="text-slate-300">
+                          <span className="text-slate-300 text-[11px]">
                             {new Date(s.loginTime).toLocaleTimeString('uz-UZ')} ({new Date(s.loginTime).toLocaleDateString('uz-UZ')})
                           </span>
                         </div>
                       </div>
 
                       {/* Action Button - ONLY Kick */}
-                      <div className="pt-1 flex items-center justify-end">
+                      <div className="pt-1">
                         <button
                           onClick={() => handleKickSession(s)}
-                          className="w-full py-2.5 bg-red-950 hover:bg-red-900 text-red-300 border border-red-800/80 text-xs font-extrabold rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md hover:shadow-red-950/50"
+                          className="w-full py-2 bg-red-950/90 hover:bg-red-900 active:bg-red-950 text-red-300 border border-red-800/80 text-xs font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md"
                           title="Ushbu telefondan akkauntni majburiy chiqarib yuborish"
                         >
-                          <LogOut className="w-4 h-4 text-red-400" />
-                          <span>🚪 Qurilmani Tizimdan Chiqarib Yuborish</span>
+                          <LogOut className="w-3.5 h-3.5 text-red-400" />
+                          <span>Qurilmani Tizimdan Chiqarish</span>
                         </button>
                       </div>
                     </div>
@@ -383,40 +528,39 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
         {/* TAB 2: Logs */}
         {activeTab === 'logs' && (
           <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-md">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-800 shadow-md">
               <div className="relative w-full sm:w-80">
                 <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Loglar, harakat, IP yoki matn bo'yicha qidiruv..."
+                  placeholder="Loglar, harakat yoki IP qidiruv..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
                 />
               </div>
 
-              <div className="flex items-center gap-3 w-full sm:w-auto overflow-x-auto">
-                <span className="px-3 py-1.5 rounded-xl bg-purple-950/80 border border-purple-800/80 text-purple-300 text-xs font-extrabold flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                <span className="px-2.5 py-1.5 rounded-xl bg-purple-950/80 border border-purple-800/80 text-purple-300 text-xs font-bold flex items-center gap-1.5 shrink-0">
                   <UserCheck className="w-3.5 h-3.5 text-purple-400" />
-                  <span>daewoobuloqboshi loglari</span>
+                  <span className="hidden sm:inline">daewoobuloqboshi</span>
                 </span>
 
-                <span className="text-xs text-slate-400">Davr:</span>
                 <select
                   value={logPeriod}
                   onChange={(e) => setLogPeriod(e.target.value as any)}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-purple-300 font-bold focus:outline-none"
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-purple-300 font-bold focus:outline-none cursor-pointer flex-1 sm:flex-initial"
                 >
-                  <option value="all">Barcha vaqtlardagi loglar</option>
+                  <option value="all">Barcha loglar</option>
                   <option value="today">Bugungi loglar</option>
                   <option value="this_month">Shu oygi loglar</option>
                 </select>
               </div>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 max-h-[600px] overflow-y-auto shadow-xl">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 space-y-2.5 max-h-[600px] overflow-y-auto shadow-xl">
               {filteredLogs.length === 0 ? (
-                <div className="py-16 text-center text-slate-500 text-xs">
+                <div className="py-12 text-center text-slate-500 text-xs">
                   Hech qanday tizim loglari topilmadi.
                 </div>
               ) : (
@@ -434,27 +578,27 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
                   return (
                     <div
                       key={log.id}
-                      className="p-4 bg-slate-950/80 border border-slate-800/80 rounded-xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-slate-700 transition-all shadow-sm"
+                      className="p-3 sm:p-4 bg-slate-950/80 border border-slate-800/80 rounded-xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 hover:border-slate-700 transition-all shadow-sm"
                     >
-                      <div className="space-y-1.5 flex-1">
+                      <div className="space-y-1.5 flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`px-2.5 py-0.5 rounded-md font-extrabold text-[11px] border ${badgeColor}`}>
+                          <span className={`px-2 py-0.5 rounded-md font-extrabold text-[10px] sm:text-[11px] border ${badgeColor}`}>
                             {log.action}
                           </span>
-                          <span className="font-bold text-white flex items-center gap-1">
+                          <span className="font-bold text-white flex items-center gap-1 text-[11px]">
                             <UserCheck className="w-3.5 h-3.5 text-purple-400" />
                             {log.username}
                           </span>
                           {log.ipAddress && (
-                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-mono">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-mono">
                               IP: {log.ipAddress}
                             </span>
                           )}
                         </div>
-                        <p className="text-slate-200 text-xs font-medium leading-relaxed">{log.details}</p>
+                        <p className="text-slate-200 text-xs font-medium leading-relaxed break-words">{log.details}</p>
                       </div>
 
-                      <div className="text-right font-mono text-[11px] text-slate-400 shrink-0 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 flex items-center gap-2">
+                      <div className="text-right font-mono text-[10px] sm:text-[11px] text-slate-400 shrink-0 bg-slate-900 px-2.5 py-1 sm:py-1.5 rounded-xl border border-slate-800 flex items-center gap-1.5 self-end sm:self-center">
                         <Clock className="w-3.5 h-3.5 text-purple-400" />
                         <span>
                           {new Date(log.timestamp).toLocaleDateString('uz-UZ')} {new Date(log.timestamp).toLocaleTimeString('uz-UZ')}
@@ -467,6 +611,17 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
             </div>
           </div>
         )}
+
+        {/* Informational System Status Footer */}
+        <footer className="pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-500 text-center sm:text-left">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            <span>Daewoo Buloqboshi • Super Admin Markazi</span>
+          </div>
+          <div className="font-mono text-[10px] text-slate-500">
+            Cloud Firestore: <strong className="text-purple-400">dwbuloqboshi1</strong> • Shifrlangan va himoyalangan
+          </div>
+        </footer>
       </main>
     </div>
   );

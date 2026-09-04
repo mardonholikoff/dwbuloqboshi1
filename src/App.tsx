@@ -571,6 +571,7 @@ export default function App() {
         onSaveRecord={handleSaveRecord}
         onDeleteRecord={handleDeleteRecord}
         onClearAllRecords={handleResetToDemo}
+        onUpdateCustomerInfo={handleUpdateCustomerInfo}
       />
     );
   }
@@ -642,6 +643,7 @@ export default function App() {
           onSyncRecord={handleSyncRecord}
           onSyncAllOffline={handleSyncAllOffline}
           onOpenAnalyticsModal={() => setIsAnalyticsModalOpen(true)}
+          onUpdateCustomerInfo={handleUpdateCustomerInfo}
         />
       </main>
 
