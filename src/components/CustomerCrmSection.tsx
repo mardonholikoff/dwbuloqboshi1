@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { ServiceRecord } from '../types';
+import { ServiceRecord, CustomerUpdatePayload } from '../types';
 import { createAdminLog } from '../lib/adminSession';
 import {
   Users,
@@ -26,7 +26,8 @@ import {
   X,
   ExternalLink,
   Tag,
-  ChevronDown
+  ChevronDown,
+  AlertCircle
 } from 'lucide-react';
 
 interface CustomerCrmSectionProps {
@@ -36,7 +37,7 @@ interface CustomerCrmSectionProps {
   onEditRecord?: (record: ServiceRecord) => void;
   onPrintRecord?: (record: ServiceRecord) => void;
   onOpenNewModal?: () => void;
-  onUpdateCustomerInfo?: (oldPlate: string, newPlate: string, newPhone: string, newModel: string) => void;
+  onUpdateCustomerInfo?: (payload: CustomerUpdatePayload) => Promise<void> | void;
 }
 
 export interface UniqueCustomerSummary {
@@ -175,6 +176,9 @@ export const CustomerCrmSection: React.FC<CustomerCrmSectionProps> = ({
   // Customer Info Quick Edit Modal State
   const [editingCustomer, setEditingCustomer] = useState<{
     oldPlate: string;
+    oldName: string;
+    oldPhone: string;
+    recordIds: string[];
     customerName: string;
     phoneNumber: string;
     carPlate: string;
@@ -616,17 +620,40 @@ export const CustomerCrmSection: React.FC<CustomerCrmSectionProps> = ({
     XLSX.writeFile(wb, `mijoz_${cleanName}_${cleanPlate}_${dateStr}.xlsx`);
   };
 
-  const handleSaveCustomerInfo = (e: React.FormEvent) => {
+  const handleSaveCustomerInfo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCustomer) return;
-    if (onUpdateCustomerInfo) {
-      onUpdateCustomerInfo(
-        editingCustomer.oldPlate,
-        editingCustomer.carPlate,
-        editingCustomer.phoneNumber,
-        editingCustomer.carModel
-      );
+
+    const trimmedName = editingCustomer.customerName.trim();
+    const trimmedPlate = editingCustomer.carPlate.toUpperCase().trim();
+    const trimmedPhone = editingCustomer.phoneNumber.trim();
+    const trimmedModel = editingCustomer.carModel.trim();
+
+    if (!trimmedPlate && !trimmedPhone && !trimmedName) {
+      alert("Iltimos, hech bo'lmaganda mijoz ismi, mashina raqami yoki telefon raqamini kiriting.");
+      return;
     }
+
+    if (onUpdateCustomerInfo) {
+      await onUpdateCustomerInfo({
+        oldPlate: editingCustomer.oldPlate,
+        oldName: editingCustomer.oldName,
+        oldPhone: editingCustomer.oldPhone,
+        recordIds: editingCustomer.recordIds,
+        newName: trimmedName,
+        newPlate: trimmedPlate,
+        newPhone: trimmedPhone,
+        newModel: trimmedModel,
+      });
+    }
+
+    // Update selected customer key so drilldown reflects updated plate/phone/name
+    const newCleanPlate = trimmedPlate.replace(/[\s\-_]/g, '');
+    const newCleanPhone = trimmedPhone.replace(/[\s\-_+]/g, '');
+    const newCleanName = trimmedName.toLowerCase();
+    const newKey = newCleanPlate || newCleanPhone || newCleanName || 'unknown';
+    setSelectedCustomerKey(newKey);
+
     setEditingCustomer(null);
   };
 
@@ -665,17 +692,20 @@ export const CustomerCrmSection: React.FC<CustomerCrmSectionProps> = ({
                 onClick={() =>
                   setEditingCustomer({
                     oldPlate: activeCustomer.plate,
-                    customerName: activeCustomer.customerName,
-                    phoneNumber: activeCustomer.phoneNumber,
-                    carPlate: activeCustomer.plate,
-                    carModel: activeCustomer.carModel,
+                    oldName: activeCustomer.customerName,
+                    oldPhone: activeCustomer.phoneNumber,
+                    recordIds: activeCustomer.records.map((r) => r.id),
+                    customerName: activeCustomer.customerName === "Noma'lum" ? '' : activeCustomer.customerName,
+                    phoneNumber: activeCustomer.phoneNumber === '—' ? '' : activeCustomer.phoneNumber,
+                    carPlate: activeCustomer.plate === '—' ? '' : activeCustomer.plate,
+                    carModel: activeCustomer.carModel === '—' ? '' : activeCustomer.carModel,
                   })
                 }
-                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Mijoz ma'lumotlarini tahrirlash"
+                className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                title="Mijoz ma'lumotlarini (ism, raqam, tel) butun tizim bo'yicha tahrirlash"
               >
                 <Edit2 className="w-3.5 h-3.5" />
-                <span>Tahrirlash</span>
+                <span>✏️ Tahrirlash (Baza bo'yicha)</span>
               </button>
 
               <button
@@ -1379,13 +1409,35 @@ export const CustomerCrmSection: React.FC<CustomerCrmSectionProps> = ({
                         {new Date(c.lastVisitDate).toLocaleDateString('uz-UZ')}
                       </td>
                       <td className="py-3 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => setSelectedCustomerKey(c.key)}
-                          className="px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-xs font-bold transition-all border border-blue-500/30 flex items-center gap-1 mx-auto cursor-pointer"
-                        >
-                          <span>Tahlil 📊</span>
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() =>
+                              setEditingCustomer({
+                                oldPlate: c.plate,
+                                oldName: c.customerName,
+                                oldPhone: c.phoneNumber,
+                                recordIds: c.records.map((r) => r.id),
+                                customerName: c.customerName === "Noma'lum" ? '' : c.customerName,
+                                phoneNumber: c.phoneNumber === '—' ? '' : c.phoneNumber,
+                                carPlate: c.plate === '—' ? '' : c.plate,
+                                carModel: c.carModel === '—' ? '' : c.carModel,
+                              })
+                            }
+                            className="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-300 hover:text-slate-950 text-xs font-bold transition-all border border-amber-500/30 flex items-center gap-1 cursor-pointer"
+                            title="Mijoz ismi, mashina raqami va telefonini butun tizim bo'yicha tahrirlash"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Tahrirlash</span>
+                          </button>
+                          <button
+                            onClick={() => setSelectedCustomerKey(c.key)}
+                            className="px-2.5 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-xs font-bold transition-all border border-blue-500/30 flex items-center gap-1 cursor-pointer"
+                            title="Ushbu mijozning to'liq CRM tahlili"
+                          >
+                            <span>Tahlil 📊</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1414,58 +1466,88 @@ export const CustomerCrmSection: React.FC<CustomerCrmSectionProps> = ({
       {/* Quick Customer Info Edit Modal */}
       {editingCustomer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-extrabold text-white">Mijoz Anketasini Tahrirlash</h3>
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-amber-500/20 text-amber-300">
+                  <Edit2 className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-extrabold text-white">Mijoz Anketasini O'zgartirish</h3>
+                  <p className="text-xs text-slate-400">Butun tizim va xizmatlar bazasi bo'yicha</p>
+                </div>
+              </div>
               <button
                 onClick={() => setEditingCustomer(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white"
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {/* Informational Alert about Global Scope */}
+            <div className="bg-amber-950/30 border border-amber-800/40 rounded-2xl p-3.5 flex items-start gap-2.5 text-xs text-amber-200/90 leading-relaxed">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <p>
+                Ushbu mijozning ismi, mashina raqami yoki telefonini o'zgartirish <strong>butun tizimga va Firestore bulut bazasiga</strong> to'g'ridan-to'g'ri ta'sir qiladi. Barcha oldin qilingan xizmat yozuvlaridagi ma'lumotlar hamda <span className="font-mono text-white bg-slate-800 px-1 py-0.5 rounded">daewoobuloqboshi</span> foydalanuvchisi uchun ham birdek yangilanadi.
+              </p>
+            </div>
+
             <form onSubmit={handleSaveCustomerInfo} className="space-y-3.5">
               <div>
-                <label className="text-xs text-slate-400 block mb-1">Mijoz Ismi:</label>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  Mijoz Ismi (F.I.SH): <span className="text-red-400">*</span>
+                </label>
                 <input
                   type="text"
                   required
                   value={editingCustomer.customerName}
                   onChange={(e) => setEditingCustomer({ ...editingCustomer, customerName: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  placeholder="Masalan: Dilshodbek Qodirov"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 font-medium"
                 />
               </div>
 
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Telefon Raqami:</label>
-                <input
-                  type="text"
-                  required
-                  value={editingCustomer.phoneNumber}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, phoneNumber: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Mashina Davlat Raqami: <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingCustomer.carPlate}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, carPlate: e.target.value.toUpperCase() })}
+                    placeholder="60 A 777 AA"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm font-mono text-amber-300 font-bold focus:outline-none focus:border-amber-500 uppercase tracking-wider"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Telefon Raqami: <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingCustomer.phoneNumber}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, phoneNumber: e.target.value })}
+                    placeholder="+998 90 123 45 67"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 font-medium font-mono"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="text-xs text-slate-400 block mb-1">Mashina Davlat Raqami:</label>
-                <input
-                  type="text"
-                  required
-                  value={editingCustomer.carPlate}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, carPlate: e.target.value.toUpperCase() })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm font-mono text-blue-400 font-bold focus:outline-none focus:border-blue-500 uppercase"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Mashina Modeli / Rusumi:</label>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  Mashina Modeli / Rusumi:
+                </label>
                 <input
                   type="text"
                   value={editingCustomer.carModel}
                   onChange={(e) => setEditingCustomer({ ...editingCustomer, carModel: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  placeholder="Gentra 1.5, Cobalt, Nexia 3..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -1473,15 +1555,16 @@ export const CustomerCrmSection: React.FC<CustomerCrmSectionProps> = ({
                 <button
                   type="button"
                   onClick={() => setEditingCustomer(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white"
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
                 >
                   Bekor Qilish
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/20"
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold shadow-lg shadow-amber-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
                 >
-                  Saqlash
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Bazada Saqlash (Barcha xizmatlarga ta'sir qiladi)</span>
                 </button>
               </div>
             </form>

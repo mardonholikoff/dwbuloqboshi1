@@ -80,3 +80,14 @@ export interface DatabaseWipeRequest {
   status: 'pending' | 'cancelled' | 'executed';
 }
 
+export interface CustomerUpdatePayload {
+  oldPlate: string;
+  oldName?: string;
+  oldPhone?: string;
+  recordIds?: string[];
+  newName: string;
+  newPlate: string;
+  newPhone: string;
+  newModel: string;
+}
+

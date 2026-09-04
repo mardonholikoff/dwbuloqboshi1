@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { ServiceRecord, RecordStatusFilter } from '../types';
+import { ServiceRecord, RecordStatusFilter, CustomerUpdatePayload } from '../types';
 import { RecordCard } from './RecordCard';
 import { CustomerCrmSection } from './CustomerCrmSection';
 import { createAdminLog } from '../lib/adminSession';
@@ -36,7 +36,7 @@ interface RecordsListProps {
   onSyncRecord?: (id: string) => void;
   onSyncAllOffline?: () => void;
   onOpenAnalyticsModal?: () => void;
-  onUpdateCustomerInfo?: (oldPlate: string, newPlate: string, newPhone: string, newModel: string) => void;
+  onUpdateCustomerInfo?: (payload: CustomerUpdatePayload) => void;
   username?: string;
 }
 

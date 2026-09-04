@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { ServiceRecord, RecordStatusFilter } from '../types';
+import { ServiceRecord, RecordStatusFilter, CustomerUpdatePayload } from '../types';
 import { createAdminLog } from '../lib/adminSession';
 import {
   X,
@@ -22,7 +22,9 @@ import {
   Sparkles,
   FileSpreadsheet,
   PieChart,
-  Users
+  Users,
+  AlertCircle,
+  CheckCircle2
 } from 'lucide-react';
 
 interface FullAnalyticsModalProps {
@@ -33,7 +35,7 @@ interface FullAnalyticsModalProps {
   onEditRecord: (record: ServiceRecord) => void;
   onPrintRecord: (record: ServiceRecord) => void;
   onOpenNewModal: () => void;
-  onUpdateCustomerInfo?: (oldPlate: string, newPlate: string, newPhone: string, newModel: string) => void;
+  onUpdateCustomerInfo?: (payload: CustomerUpdatePayload) => void;
   username?: string;
 }
 
@@ -108,6 +110,9 @@ export const FullAnalyticsModal: React.FC<FullAnalyticsModalProps> = ({
   // Customer Info Edit Modal State
   const [editingCustomer, setEditingCustomer] = useState<{
     oldPlate: string;
+    oldName: string;
+    oldPhone: string;
+    recordIds: string[];
     customerName: string;
     phoneNumber: string;
     carPlate: string;
@@ -117,13 +122,27 @@ export const FullAnalyticsModal: React.FC<FullAnalyticsModalProps> = ({
   const handleSaveCustomerInfo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCustomer) return;
+    const trimmedName = editingCustomer.customerName.trim();
+    const trimmedPlate = editingCustomer.carPlate.toUpperCase().trim();
+    const trimmedPhone = editingCustomer.phoneNumber.trim();
+    const trimmedModel = editingCustomer.carModel.trim();
+
+    if (!trimmedName && !trimmedPlate && !trimmedPhone) {
+      alert("Iltimos, hech bo'lmaganda mijoz ismi, mashina raqami yoki telefon raqamini kiriting.");
+      return;
+    }
+
     if (onUpdateCustomerInfo) {
-      onUpdateCustomerInfo(
-        editingCustomer.oldPlate,
-        editingCustomer.carPlate,
-        editingCustomer.phoneNumber,
-        editingCustomer.carModel
-      );
+      onUpdateCustomerInfo({
+        oldPlate: editingCustomer.oldPlate,
+        oldName: editingCustomer.oldName,
+        oldPhone: editingCustomer.oldPhone,
+        recordIds: editingCustomer.recordIds,
+        newName: trimmedName,
+        newPlate: trimmedPlate,
+        newPhone: trimmedPhone,
+        newModel: trimmedModel,
+      });
     }
     setEditingCustomer(null);
   };
@@ -811,14 +830,17 @@ export const FullAnalyticsModal: React.FC<FullAnalyticsModalProps> = ({
                       onClick={() =>
                         setEditingCustomer({
                           oldPlate: c.plate,
-                          customerName: c.customerName,
-                          phoneNumber: c.phoneNumber || '',
-                          carPlate: c.plate,
-                          carModel: c.carModel || '',
+                          oldName: c.customerName,
+                          oldPhone: c.phoneNumber || '',
+                          recordIds: c.records.map((r) => r.id),
+                          customerName: c.customerName === "Noma'lum" ? '' : c.customerName,
+                          phoneNumber: c.phoneNumber === '—' ? '' : (c.phoneNumber || ''),
+                          carPlate: c.plate === '—' ? '' : c.plate,
+                          carModel: c.carModel === '—' ? '' : (c.carModel || ''),
                         })
                       }
-                      className="py-2 px-3 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs rounded-xl border border-slate-800 flex items-center gap-1 cursor-pointer transition-colors shrink-0"
-                      title="Mijoz telefon raqami, mashina raqami va modelini tahrirlash"
+                      className="py-2 px-3 bg-amber-500/15 hover:bg-amber-500 text-amber-300 hover:text-slate-950 font-bold text-xs rounded-xl border border-amber-500/30 flex items-center gap-1 cursor-pointer transition-all shrink-0"
+                      title="Mijoz ismi, avto raqami va telefonini butun baza bo'yicha tahrirlash"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                       <span>Tahrirlash</span>
@@ -976,49 +998,62 @@ export const FullAnalyticsModal: React.FC<FullAnalyticsModalProps> = ({
               </button>
             </div>
 
+            <div className="bg-amber-950/30 border border-amber-800/40 rounded-2xl p-3.5 flex items-start gap-2.5 text-xs text-amber-200/90 leading-relaxed">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <p>
+                Mijoz ma'lumotlarini o'zgartirish <strong>butun tizim va xizmatlar bazasiga</strong> ta'sir qiladi. Ushbu mijozning barcha oldingi xizmat yozuvlaridagi ismi, davlat raqami va telefoni birdek yangilanadi.
+              </p>
+            </div>
+
             <form onSubmit={handleSaveCustomerInfo} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">
-                  Mijoz Ismi (O'zgarmaydi)
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Mijoz Ismi (F.I.SH) <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
-                  disabled
+                  required
                   value={editingCustomer.customerName}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-400 rounded-xl text-sm cursor-not-allowed opacity-80"
+                  onChange={(e) =>
+                    setEditingCustomer({ ...editingCustomer, customerName: e.target.value })
+                  }
+                  placeholder="Masalan: Dilshodbek Qodirov"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 text-white rounded-xl text-sm focus:outline-none focus:border-amber-500 font-medium"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Telefon Raqami <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingCustomer.phoneNumber}
-                  onChange={(e) =>
-                    setEditingCustomer({ ...editingCustomer, phoneNumber: e.target.value })
-                  }
-                  placeholder="+998 90 123 45 67"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 text-white rounded-xl text-sm focus:outline-none focus:border-amber-500"
-                />
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Mashina Raqami <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingCustomer.carPlate}
+                    onChange={(e) =>
+                      setEditingCustomer({ ...editingCustomer, carPlate: e.target.value.toUpperCase() })
+                    }
+                    placeholder="01 A 777 AA"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 text-amber-300 rounded-xl text-sm font-mono font-bold uppercase tracking-wider focus:outline-none focus:border-amber-500"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Mashina Raqami <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingCustomer.carPlate}
-                  onChange={(e) =>
-                    setEditingCustomer({ ...editingCustomer, carPlate: e.target.value.toUpperCase() })
-                  }
-                  placeholder="01 A 777 AA"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 text-white rounded-xl text-sm font-mono uppercase focus:outline-none focus:border-amber-500"
-                />
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Telefon Raqami <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingCustomer.phoneNumber}
+                    onChange={(e) =>
+                      setEditingCustomer({ ...editingCustomer, phoneNumber: e.target.value })
+                    }
+                    placeholder="+998 90 123 45 67"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 text-white rounded-xl text-sm font-mono focus:outline-none focus:border-amber-500"
+                  />
+                </div>
               </div>
 
               <div>
@@ -1032,7 +1067,7 @@ export const FullAnalyticsModal: React.FC<FullAnalyticsModalProps> = ({
                     setEditingCustomer({ ...editingCustomer, carModel: e.target.value })
                   }
                   placeholder="Gentra 1.5, Cobalt..."
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 text-white rounded-xl text-sm focus:outline-none focus:border-amber-500"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 text-white rounded-xl text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -1046,9 +1081,10 @@ export const FullAnalyticsModal: React.FC<FullAnalyticsModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl cursor-pointer shadow-lg shadow-amber-600/30"
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl cursor-pointer shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition-all"
                 >
-                  Saqlash
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Bazada Saqlash</span>
                 </button>
               </div>
             </form>

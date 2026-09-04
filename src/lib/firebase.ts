@@ -258,6 +258,40 @@ export async function syncOfflineRecordsToCloud(records: ServiceRecord[]): Promi
 }
 
 /**
+ * Batch update multiple records in Firestore (e.g. when customer info changes across all previous visits)
+ */
+export async function batchUpdateRecordsInCloud(recordsToUpdate: ServiceRecord[]): Promise<boolean> {
+  if (!db || recordsToUpdate.length === 0) return true;
+
+  const updatePromise = (async () => {
+    try {
+      const nowIso = new Date().toISOString();
+      const chunkSize = 400; // Keep safely below Firestore 500 limit
+      for (let i = 0; i < recordsToUpdate.length; i += chunkSize) {
+        const chunk = recordsToUpdate.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach((rec) => {
+          const docRef = doc(db, RECORDS_COLLECTION, rec.id);
+          const sanitized = sanitizeRecordForFirestore({
+            ...rec,
+            isOffline: false,
+            syncedAt: nowIso,
+          });
+          batch.set(docRef, sanitized, { merge: true });
+        });
+        await batch.commit();
+      }
+      return true;
+    } catch (err) {
+      console.warn('Failed batch update records in Firestore:', err);
+      return false;
+    }
+  })();
+
+  return withTimeout(updatePromise, 8000, false);
+}
+
+/**
  * Catalog item management (Custom Oil types & Spare Parts)
  */
 export interface CatalogData {

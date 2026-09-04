@@ -11,7 +11,7 @@ import {
   Database,
   Users
 } from 'lucide-react';
-import { DeviceSession, AdminLog, ServiceRecord } from '../types';
+import { DeviceSession, AdminLog, ServiceRecord, CustomerUpdatePayload } from '../types';
 import {
   subscribeToSessions,
   subscribeToAdminLogs,
@@ -23,6 +23,7 @@ import {
 import {
   subscribeToRecords,
   saveRecordToCloud,
+  batchUpdateRecordsInCloud,
   deleteRecordFromCloud,
   clearAllRecordsFromCloud
 } from '../lib/firebase';
@@ -36,7 +37,7 @@ interface AdminStandaloneDashboardProps {
   onSaveRecord?: (record: ServiceRecord) => Promise<void> | void;
   onDeleteRecord?: (id: string) => Promise<void> | void;
   onClearAllRecords?: () => Promise<void> | void;
-  onUpdateCustomerInfo?: (oldPlate: string, newPlate: string, newPhone: string, newModel: string) => Promise<void> | void;
+  onUpdateCustomerInfo?: (payload: CustomerUpdatePayload) => Promise<void> | void;
 }
 
 export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> = ({
@@ -104,28 +105,40 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
     }
   };
 
-  // Update customer info handler
-  const handleUpdateCustomerInfo = async (
-    oldPlate: string,
-    newPlate: string,
-    newPhone: string,
-    newModel: string
-  ) => {
+  // Update customer info handler (Global system & all historical visits)
+  const handleUpdateCustomerInfo = async (payload: CustomerUpdatePayload) => {
     if (propUpdateCustomerInfo) {
-      await propUpdateCustomerInfo(oldPlate, newPlate, newPhone, newModel);
+      await propUpdateCustomerInfo(payload);
     } else {
-      const cleanOldPlate = oldPlate.toUpperCase().trim();
-      const cleanNewPlate = newPlate.toUpperCase().trim();
-      const cleanPhone = newPhone.trim();
-      const cleanModel = newModel.trim();
+      const cleanOldPlate = (payload.oldPlate || '').toUpperCase().trim().replace(/[\s\-_]/g, '');
+      const cleanOldPhone = (payload.oldPhone || '').trim().replace(/[\s\-_+]/g, '');
+      const cleanOldName = (payload.oldName || '').trim().toLowerCase();
+
+      const cleanNewName = payload.newName.trim();
+      const cleanNewPlate = payload.newPlate.toUpperCase().trim();
+      const cleanNewPhone = payload.newPhone.trim();
+      const cleanNewModel = payload.newModel.trim();
+
+      const recordIdSet = new Set<string>(payload.recordIds || []);
 
       const updatedRecords = records.map((r) => {
-        if (r.carPlate.toUpperCase().trim() === cleanOldPlate) {
+        const rPlate = (r.carPlate || '').toUpperCase().trim().replace(/[\s\-_]/g, '');
+        const rPhone = (r.phoneNumber || '').trim().replace(/[\s\-_+]/g, '');
+        const rName = (r.customerName || '').trim().toLowerCase();
+
+        const isMatch =
+          recordIdSet.has(r.id) ||
+          (cleanOldPlate && rPlate === cleanOldPlate) ||
+          (cleanOldPhone && cleanOldPhone.length >= 7 && rPhone === cleanOldPhone) ||
+          (cleanOldName && rName === cleanOldName && (!cleanOldPlate || rPlate === cleanOldPlate));
+
+        if (isMatch) {
           return {
             ...r,
-            carPlate: cleanNewPlate,
-            phoneNumber: cleanPhone,
-            carModel: cleanModel || r.carModel,
+            customerName: cleanNewName || r.customerName,
+            carPlate: cleanNewPlate || r.carPlate,
+            phoneNumber: cleanNewPhone || r.phoneNumber,
+            carModel: cleanNewModel || r.carModel,
           };
         }
         return r;
@@ -133,17 +146,24 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
 
       setRecords(updatedRecords);
 
-      const recordsToSync = updatedRecords.filter(
-        (r) => r.carPlate.toUpperCase().trim() === cleanNewPlate
-      );
-      for (const rec of recordsToSync) {
-        await saveRecordToCloud(rec);
-      }
+      const recordsToSync = updatedRecords.filter((r) => {
+        const rPlate = (r.carPlate || '').toUpperCase().trim().replace(/[\s\-_]/g, '');
+        const rPhone = (r.phoneNumber || '').trim().replace(/[\s\-_+]/g, '');
+        const rName = (r.customerName || '').trim().toLowerCase();
+        return (
+          recordIdSet.has(r.id) ||
+          (cleanNewPlate && rPlate === cleanNewPlate.replace(/[\s\-_]/g, '')) ||
+          (cleanNewPhone && rPhone === cleanNewPhone.replace(/[\s\-_+]/g, '')) ||
+          (cleanNewName && rName === cleanNewName.toLowerCase())
+        );
+      });
 
-      showToast(`Mijoz (${cleanNewPlate}) ma'lumotlari muvaffaqiyatli yangilandi!`);
+      await batchUpdateRecordsInCloud(recordsToSync);
+
+      showToast(`Mijoz (${cleanNewName || cleanNewPlate}) ma'lumotlari barcha ${recordsToSync.length} ta xizmat tarixida muvaffaqiyatli yangilandi!`);
       await createAdminLog(
-        "Mijoz Ma'lumotlari Tahrirlandi",
-        `Avto raqam: ${cleanOldPlate} -> ${cleanNewPlate}, Tel: ${cleanPhone}, Model: ${cleanModel}`,
+        "Mijoz Ma'lumotlari Butun Bazada Yangilandi",
+        `Mijoz: "${payload.oldName || payload.oldPlate}" -> "${cleanNewName}", Avto: ${payload.oldPlate} -> ${cleanNewPlate}, Tel: ${cleanNewPhone}. Jami ${recordsToSync.length} ta oldingi xizmat yozuvlari birdek yangilandi`,
         username
       );
     }

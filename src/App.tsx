@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ServiceRecord, AuthState } from './types';
+import { ServiceRecord, AuthState, CustomerUpdatePayload } from './types';
 import { INITIAL_RECORDS } from './data/initialData';
 import { LoginForm } from './components/LoginForm';
 import { Header } from './components/Header';
@@ -18,6 +18,7 @@ import { Wrench, Check, AlertCircle, Plus } from 'lucide-react';
 import {
   subscribeToRecords,
   saveRecordToCloud,
+  batchUpdateRecordsInCloud,
   deleteRecordFromCloud,
   clearAllRecordsFromCloud,
   syncOfflineRecordsToCloud,
@@ -475,46 +476,104 @@ export default function App() {
     setIsFormModalOpen(true);
   };
 
-  // Update Customer Info (Phone, Plate, Model) from FullAnalyticsModal
+  // Update Customer Info (Name, Plate, Phone, Model) across the entire system and all historical records
   const handleUpdateCustomerInfo = async (
-    oldPlate: string,
-    newPlate: string,
-    newPhone: string,
-    newModel: string
+    payloadOrOldPlate: CustomerUpdatePayload | string,
+    legacyNewPlate?: string,
+    legacyNewPhone?: string,
+    legacyNewModel?: string,
+    legacyNewName?: string
   ) => {
-    const cleanOldPlate = oldPlate.toUpperCase().trim();
+    let oldPlate = '';
+    let oldName = '';
+    let oldPhone = '';
+    let recordIds: string[] | undefined = undefined;
+    let newName = '';
+    let newPlate = '';
+    let newPhone = '';
+    let newModel = '';
+
+    if (typeof payloadOrOldPlate === 'string') {
+      oldPlate = payloadOrOldPlate;
+      newPlate = legacyNewPlate || '';
+      newPhone = legacyNewPhone || '';
+      newModel = legacyNewModel || '';
+      newName = legacyNewName || '';
+    } else if (payloadOrOldPlate) {
+      oldPlate = payloadOrOldPlate.oldPlate || '';
+      oldName = payloadOrOldPlate.oldName || '';
+      oldPhone = payloadOrOldPlate.oldPhone || '';
+      recordIds = payloadOrOldPlate.recordIds;
+      newName = payloadOrOldPlate.newName || '';
+      newPlate = payloadOrOldPlate.newPlate || '';
+      newPhone = payloadOrOldPlate.newPhone || '';
+      newModel = payloadOrOldPlate.newModel || '';
+    }
+
+    const cleanOldPlate = oldPlate.toUpperCase().trim().replace(/[\s\-_]/g, '');
+    const cleanOldPhone = oldPhone.trim().replace(/[\s\-_+]/g, '');
+    const cleanOldName = oldName.trim().toLowerCase();
+
+    const cleanNewName = newName.trim();
     const cleanNewPlate = newPlate.toUpperCase().trim();
-    const cleanPhone = newPhone.trim();
-    const cleanModel = newModel.trim();
+    const cleanNewPhone = newPhone.trim();
+    const cleanNewModel = newModel.trim();
+
+    const recordIdSet = new Set<string>(recordIds || []);
 
     const updatedRecords = records.map((r) => {
-      if (r.carPlate.toUpperCase().trim() === cleanOldPlate) {
+      const rPlate = (r.carPlate || '').toUpperCase().trim().replace(/[\s\-_]/g, '');
+      const rPhone = (r.phoneNumber || '').trim().replace(/[\s\-_+]/g, '');
+      const rName = (r.customerName || '').trim().toLowerCase();
+
+      const isMatch =
+        recordIdSet.has(r.id) ||
+        (cleanOldPlate && rPlate === cleanOldPlate) ||
+        (cleanOldPhone && cleanOldPhone.length >= 7 && rPhone === cleanOldPhone) ||
+        (cleanOldName && rName === cleanOldName && (!cleanOldPlate || rPlate === cleanOldPlate));
+
+      if (isMatch) {
         return {
           ...r,
-          carPlate: cleanNewPlate,
-          phoneNumber: cleanPhone,
-          carModel: cleanModel || r.carModel,
+          customerName: cleanNewName || r.customerName,
+          carPlate: cleanNewPlate || r.carPlate,
+          phoneNumber: cleanNewPhone || r.phoneNumber,
+          carModel: cleanNewModel || r.carModel,
         };
       }
       return r;
     });
 
     setRecords(updatedRecords);
-    localStorage.setItem(STORAGE_KEY_RECORDS, JSON.stringify(updatedRecords));
-
-    if (navigator.onLine) {
-      const recordsToSync = updatedRecords.filter(
-        (r) => r.carPlate.toUpperCase().trim() === cleanNewPlate
-      );
-      for (const rec of recordsToSync) {
-        await saveRecordToCloud(rec);
-      }
+    try {
+      localStorage.setItem(STORAGE_KEY_RECORDS, JSON.stringify(updatedRecords));
+    } catch {
+      // ignore
     }
 
-    showToast(`Mijoz (${cleanNewPlate}) ma'lumotlari muvaffaqiyatli yangilandi!`, 'success');
+    const recordsToSync = updatedRecords.filter((r) => {
+      const rPlate = (r.carPlate || '').toUpperCase().trim().replace(/[\s\-_]/g, '');
+      const rPhone = (r.phoneNumber || '').trim().replace(/[\s\-_+]/g, '');
+      const rName = (r.customerName || '').trim().toLowerCase();
+      return (
+        recordIdSet.has(r.id) ||
+        (cleanNewPlate && rPlate === cleanNewPlate.replace(/[\s\-_]/g, '')) ||
+        (cleanNewPhone && rPhone === cleanNewPhone.replace(/[\s\-_+]/g, '')) ||
+        (cleanNewName && rName === cleanNewName.toLowerCase())
+      );
+    });
+
+    if (navigator.onLine && recordsToSync.length > 0) {
+      await batchUpdateRecordsInCloud(recordsToSync);
+    }
+
+    showToast(
+      `Mijoz (${cleanNewName || cleanNewPlate}) ma'lumotlari barcha ${recordsToSync.length} ta xizmat tarixida muvaffaqiyatli yangilandi!`,
+      'success'
+    );
     await createAdminLog(
-      "Mijoz Ma'lumotlari Tahrirlandi",
-      `Avto raqam: ${cleanOldPlate} -> ${cleanNewPlate}, Tel: ${cleanPhone}, Model: ${cleanModel}`,
+      "Mijoz Ma'lumotlari Butun Bazada Yangilandi",
+      `Mijoz: "${oldName || oldPlate}" -> "${cleanNewName}", Avto: "${oldPlate}" -> "${cleanNewPlate}", Tel: "${cleanNewPhone}". Jami ${recordsToSync.length} ta xizmat yozuvlari birdek yangilandi`,
       auth.username || 'daewoobuloqboshi'
     );
   };
