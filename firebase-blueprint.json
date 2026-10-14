@@ -1,7 +1,7 @@
 {
   "entities": {
-    "service_records": {
-      "title": "Service Records",
+    "serviceRecord": {
+      "title": "Service Record",
       "description": "Auto service customer records and maintenance logs",
       "type": "object",
       "properties": {
@@ -11,17 +11,90 @@
         "phoneNumber": { "type": "string" },
         "carPlate": { "type": "string" },
         "carModel": { "type": "string" },
-        "mileageKm": { "type": ["number", "string"] },
+        "mileageKm": { "type": "number" },
         "replacedOil": { "type": "string" },
         "replacedParts": { "type": "string" },
         "partsToReplace": { "type": "string" },
         "status": { "type": "string" },
-        "costUzs": { "type": ["number", "string"] },
+        "costUzs": { "type": "number" },
+        "oilCostUzs": { "type": "number" },
+        "partsCostUzs": { "type": "number" },
+        "visitIntervalDays": { "type": "number" },
         "notes": { "type": "string" },
         "isOffline": { "type": "boolean" },
         "syncedAt": { "type": "string" }
       },
       "required": ["id", "createdAt", "customerName", "phoneNumber", "carPlate"]
+    },
+    "deletedRecord": {
+      "title": "Deleted Record Tombstone",
+      "description": "Tombstone marker for deleted records to synchronize deletions safely",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "deletedAt": { "type": "string" },
+        "deletedBy": { "type": "string" }
+      },
+      "required": ["id", "deletedAt"]
+    },
+    "activeSession": {
+      "title": "Active Device Session",
+      "description": "Active session heartbeat and device tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "deviceName": { "type": "string" },
+        "platform": { "type": "string" },
+        "lastActive": { "type": "string" },
+        "ipAddress": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "username", "lastActive"]
+    },
+    "adminLog": {
+      "title": "Admin Audit Log",
+      "description": "System event audit trail for security and monitoring",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "username": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "action", "details"]
+    },
+    "appSetting": {
+      "title": "App Setting Document",
+      "description": "General application settings like custom catalogs or wipe requests",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/service_records/{recordId}": {
+      "schema": "serviceRecord",
+      "description": "Collection of all car service and parts records"
+    },
+    "/deleted_records/{recordId}": {
+      "schema": "deletedRecord",
+      "description": "Tombstones for deleted records to maintain multi-device sync integrity"
+    },
+    "/active_sessions/{sessionId}": {
+      "schema": "activeSession",
+      "description": "Current active device sessions and heartbeats"
+    },
+    "/admin_logs/{logId}": {
+      "schema": "adminLog",
+      "description": "Administrative actions audit trail"
+    },
+    "/app_settings/{settingId}": {
+      "schema": "appSetting",
+      "description": "Shared configurations such as parts catalog and wipe requests"
     }
   }
 }

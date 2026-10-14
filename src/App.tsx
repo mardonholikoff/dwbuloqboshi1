@@ -153,20 +153,9 @@ export default function App() {
     }
 
     const unsubscribe = subscribeToRecords(
-      (cloudRecords) => {
+      (mergedRecords) => {
         if (!isSubscribed) return;
-
-        setRecords((localRecords) => {
-          const unsyncedLocal = localRecords.filter(
-            (lr) => lr.isOffline && !cloudRecords.some((cr) => cr.id === lr.id)
-          );
-          const combined = [...unsyncedLocal, ...cloudRecords];
-          // Sort by createdAt descending
-          combined.sort(
-            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
-          return combined;
-        });
+        setRecords(mergedRecords);
       },
       (err) => {
         console.warn('Firestore sync status:', err.message);
@@ -326,7 +315,7 @@ export default function App() {
       });
 
       if (!isNowOffline) {
-        saveRecordToCloud(updatedRecord);
+        await saveRecordToCloud(updatedRecord);
         showToast(`${recordData.customerName} uchun ma'lumotlar yangilandi va bulutga saqlandi!`, 'success');
       } else {
         showToast(`⚡ Offline rejimda yangilandi (${recordData.carPlate}). Online bo'lganda sinxronlanadi.`, 'info');
@@ -361,6 +350,7 @@ export default function App() {
         syncedAt: isNowOffline ? '' : new Date().toISOString(),
       };
 
+      // 1. Immediately store in state and localStorage so user sees it without any lag
       setRecords((prev) => {
         const next = [newRecord, ...prev];
         try {
@@ -370,15 +360,29 @@ export default function App() {
       });
 
       if (isNowOffline) {
-        showToast(`⚡ Offline rejimda saqlandi (${recordData.carPlate}). Online bo'lganda sinxronlanadi.`, 'info');
+        showToast(`⚡ Offline rejimda saqlandi (${recordData.carPlate}). Internet ulanganda bulutga sinxronlanadi.`, 'info');
       } else {
-        saveRecordToCloud(newRecord).then((ok) => {
-          if (!ok) {
-            setRecords((prev) => prev.map((r) => (r.id === generatedId ? { ...r, isOffline: true } : r)));
-            showToast(`⚠️ Tarmoq xatosi: Yozuv qurilmada offline saqlandi (${recordData.carPlate}).`, 'info');
+        try {
+          const success = await saveRecordToCloud(newRecord);
+          if (success) {
+            setRecords((prev) =>
+              prev.map((r) =>
+                r.id === generatedId ? { ...r, isOffline: false, syncedAt: new Date().toISOString() } : r
+              )
+            );
+            showToast(`Yangi xizmat yozuvi bulutli bazaga muvaffaqiyatli saqlandi! (${recordData.carPlate})`, 'success');
+          } else {
+            setRecords((prev) =>
+              prev.map((r) => (r.id === generatedId ? { ...r, isOffline: true } : r))
+            );
+            showToast(`⚠️ Yozuv qurilmada offline saqlandi (${recordData.carPlate}). Keyinroq avtomatik sinxronlanadi.`, 'info');
           }
-        });
-        showToast(`Yangi xizmat yozuvi bulutli bazaga qo'shildi! (${recordData.carPlate})`, 'success');
+        } catch {
+          setRecords((prev) =>
+            prev.map((r) => (r.id === generatedId ? { ...r, isOffline: true } : r))
+          );
+          showToast(`⚠️ Yozuv qurilmada xavfsiz saqlandi.`, 'info');
+        }
       }
 
       await createAdminLog(
@@ -440,10 +444,14 @@ export default function App() {
     const target = records.find((r) => r.id === id);
     const currentUser = auth.username || 'daewoobuloqboshi';
     if (confirm(`Rostdan ham "${target?.customerName || 'Mijoz'}" yozuvini bazadan o'chirmoqchimisiz?`)) {
-      setRecords((prev) => prev.filter((r) => r.id !== id));
-      if (navigator.onLine) {
-        deleteRecordFromCloud(id);
-      }
+      setRecords((prev) => {
+        const next = prev.filter((r) => r.id !== id);
+        try {
+          localStorage.setItem(STORAGE_KEY_RECORDS, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      await deleteRecordFromCloud(id);
       showToast("Yozuv bazadan o'chirildi.", 'error');
       await createAdminLog(
         "Xizmat O'chirildi",

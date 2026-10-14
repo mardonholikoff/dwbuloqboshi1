@@ -56,12 +56,15 @@ if (isFirebaseConfigured) {
 export const db = firestoreDb;
 
 const RECORDS_COLLECTION = 'service_records';
+const DELETED_COLLECTION = 'deleted_records';
 const CATALOG_DOC_ID = 'catalog_items';
+const STORAGE_KEY_RECORDS = 'daewoo_nargiz_records_v1';
+const DELETED_RECORDS_KEY = 'daewoo_deleted_record_ids_v1';
 
 /**
  * Timeout helper to prevent any cloud promise from hanging indefinitely
  */
-function withTimeout<T>(promise: Promise<T>, timeoutMs = 5000, fallbackValue: T): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 10000, fallbackValue: T): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((resolve) => setTimeout(() => resolve(fallbackValue), timeoutMs)),
@@ -69,22 +72,71 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs = 5000, fallbackValue: T)
 }
 
 /**
- * Real-time listener for all service records in Firestore with immediate local fallback.
+ * Retrieve local set of deleted record IDs to prevent phantom resurrection
+ */
+export function getLocalDeletedRecordIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_RECORDS_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        return new Set(arr);
+      }
+    }
+  } catch {}
+  return new Set();
+}
+
+/**
+ * Mark a record ID as intentionally deleted
+ */
+export function markRecordAsDeletedLocal(recordId: string): void {
+  try {
+    const set = getLocalDeletedRecordIds();
+    set.add(recordId);
+    // Keep max 1000 recent deleted IDs
+    const arr = Array.from(set).slice(-1000);
+    localStorage.setItem(DELETED_RECORDS_KEY, JSON.stringify(arr));
+  } catch {}
+}
+
+/**
+ * Unmark a record from deleted set (if re-added or restored)
+ */
+export function unmarkRecordAsDeleted(recordId: string): void {
+  try {
+    const set = getLocalDeletedRecordIds();
+    if (set.has(recordId)) {
+      set.delete(recordId);
+      localStorage.setItem(DELETED_RECORDS_KEY, JSON.stringify(Array.from(set)));
+    }
+  } catch {}
+}
+
+/**
+ * Real-time listener for all service records in Firestore with zero-data-loss local merging.
  */
 export function subscribeToRecords(
   onData: (records: ServiceRecord[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  // 1. Immediately emit locally cached records so the user never sees an empty screen in offline/PWA mode
-  try {
-    const local = localStorage.getItem('daewoo_nargiz_records_v1');
-    if (local) {
-      const parsed = JSON.parse(local);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        onData(parsed);
+  // Helper to emit locally cached records safely
+  const emitLocalRecords = () => {
+    try {
+      const local = localStorage.getItem(STORAGE_KEY_RECORDS);
+      if (local) {
+        const parsed = JSON.parse(local);
+        const deletedIds = getLocalDeletedRecordIds();
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const activeOnly = parsed.filter((r) => !deletedIds.has(r.id));
+          onData(activeOnly);
+        }
       }
-    }
-  } catch {}
+    } catch {}
+  };
+
+  // 1. Immediately emit locally cached records so UI never flashes empty
+  emitLocalRecords();
 
   if (!db) {
     return () => {};
@@ -97,25 +149,47 @@ export function subscribeToRecords(
     return onSnapshot(
       q,
       (snapshot) => {
+        const deletedIds = getLocalDeletedRecordIds();
         const cloudRecords: ServiceRecord[] = [];
         snapshot.forEach((docSnap) => {
-          cloudRecords.push(docSnap.data() as ServiceRecord);
+          const rec = docSnap.data() as ServiceRecord;
+          if (rec && rec.id && !deletedIds.has(rec.id)) {
+            cloudRecords.push(rec);
+          }
         });
 
-        // Merge with any offline pending items in localStorage
+        // Safe merge with local storage:
+        // Any record in localStorage that has NOT been deleted must NEVER be discarded!
         try {
-          const localSaved = localStorage.getItem('daewoo_nargiz_records_v1');
+          const localSaved = localStorage.getItem(STORAGE_KEY_RECORDS);
           const localList: ServiceRecord[] = localSaved ? JSON.parse(localSaved) : [];
-          const unsyncedOffline = localList.filter(
-            (lr) => lr.isOffline && !cloudRecords.some((cr) => cr.id === lr.id)
-          );
-          const merged = [...unsyncedOffline, ...cloudRecords];
+
+          // Find local records not yet present in Firestore cloud snapshot
+          const pendingSync: ServiceRecord[] = [];
+          localList.forEach((lr) => {
+            if (!lr || !lr.id || deletedIds.has(lr.id)) return;
+            const inCloud = cloudRecords.some((cr) => cr.id === lr.id);
+            if (!inCloud) {
+              pendingSync.push(lr);
+            }
+          });
+
+          // Merge: all cloud records + all pending local records
+          const merged = [...cloudRecords];
+          pendingSync.forEach((pending) => {
+            merged.push(pending);
+            // Proactively auto-sync pending local records to cloud in the background
+            if (navigator.onLine && db) {
+              saveRecordToCloud(pending).catch(() => {});
+            }
+          });
+
           merged.sort(
             (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           );
 
-          // Save merged copy to localStorage for seamless offline restarts
-          localStorage.setItem('daewoo_nargiz_records_v1', JSON.stringify(merged));
+          // Save authoritative merged copy to localStorage for seamless offline restarts
+          localStorage.setItem(STORAGE_KEY_RECORDS, JSON.stringify(merged));
           onData(merged);
         } catch {
           onData(cloudRecords);
@@ -123,14 +197,7 @@ export function subscribeToRecords(
       },
       (err) => {
         console.warn('Firestore subscription status (running in offline mode):', err.message);
-        // On network failure or offline, make sure local records are served
-        try {
-          const local = localStorage.getItem('daewoo_nargiz_records_v1');
-          if (local) {
-            const parsed = JSON.parse(local);
-            if (Array.isArray(parsed)) onData(parsed);
-          }
-        } catch {}
+        emitLocalRecords();
         if (onError) onError(err);
       }
     );
@@ -156,9 +223,12 @@ function sanitizeRecordForFirestore(record: ServiceRecord): Record<string, any> 
 }
 
 /**
- * Save or update a single record in Firestore
+ * Save or update a single record in Firestore with guaranteed persistence
  */
 export async function saveRecordToCloud(record: ServiceRecord): Promise<boolean> {
+  // Ensure the record is not in deleted set
+  unmarkRecordAsDeleted(record.id);
+
   if (!db) return false;
 
   const savePromise = (async () => {
@@ -177,19 +247,40 @@ export async function saveRecordToCloud(record: ServiceRecord): Promise<boolean>
     }
   })();
 
-  return withTimeout(savePromise, 4000, false);
+  return withTimeout(savePromise, 10000, false);
 }
 
 /**
- * Delete a record from Firestore
+ * Delete a record from Firestore and register deletion tombstone
  */
 export async function deleteRecordFromCloud(recordId: string): Promise<boolean> {
+  // 1. Mark as deleted locally
+  markRecordAsDeletedLocal(recordId);
+
+  // 2. Remove immediately from local storage cache
+  try {
+    const local = localStorage.getItem(STORAGE_KEY_RECORDS);
+    if (local) {
+      const list: ServiceRecord[] = JSON.parse(local);
+      const filtered = list.filter((r) => r.id !== recordId);
+      localStorage.setItem(STORAGE_KEY_RECORDS, JSON.stringify(filtered));
+    }
+  } catch {}
+
   if (!db) return true;
 
   const deletePromise = (async () => {
     try {
       const docRef = doc(db, RECORDS_COLLECTION, recordId);
       await deleteDoc(docRef);
+
+      // Record tombstone in Firestore deleted_records collection
+      const tombstoneRef = doc(db, DELETED_COLLECTION, recordId);
+      setDoc(tombstoneRef, {
+        id: recordId,
+        deletedAt: new Date().toISOString(),
+      }).catch(() => {});
+
       return true;
     } catch (err) {
       console.warn('Failed to delete record from Firestore:', err);
@@ -197,13 +288,18 @@ export async function deleteRecordFromCloud(recordId: string): Promise<boolean> 
     }
   })();
 
-  return withTimeout(deletePromise, 4000, true);
+  return withTimeout(deletePromise, 8000, true);
 }
 
 /**
  * Delete ALL service records from Firestore
  */
 export async function clearAllRecordsFromCloud(): Promise<boolean> {
+  try {
+    localStorage.removeItem(STORAGE_KEY_RECORDS);
+    localStorage.removeItem(DELETED_RECORDS_KEY);
+  } catch {}
+
   if (!db) return true;
 
   const clearPromise = (async () => {
@@ -222,7 +318,7 @@ export async function clearAllRecordsFromCloud(): Promise<boolean> {
     }
   })();
 
-  return withTimeout(clearPromise, 4000, true);
+  return withTimeout(clearPromise, 10000, true);
 }
 
 /**
@@ -237,6 +333,7 @@ export async function syncOfflineRecordsToCloud(records: ServiceRecord[]): Promi
     const nowIso = new Date().toISOString();
 
     offlineRecords.forEach((record) => {
+      unmarkRecordAsDeleted(record.id);
       const docRef = doc(db, RECORDS_COLLECTION, record.id);
       const cloudRecord = sanitizeRecordForFirestore({
         ...record,
@@ -246,7 +343,7 @@ export async function syncOfflineRecordsToCloud(records: ServiceRecord[]): Promi
       batch.set(docRef, cloudRecord, { merge: true });
     });
 
-    await withTimeout(batch.commit(), 5000, null);
+    await withTimeout(batch.commit(), 10000, null);
 
     return records.map((r) =>
       r.isOffline ? { ...r, isOffline: false, syncedAt: nowIso } : r
