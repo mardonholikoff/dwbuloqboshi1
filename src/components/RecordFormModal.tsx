@@ -86,6 +86,7 @@ export const RecordFormModal: React.FC<RecordFormModalProps> = ({
   const [notes, setNotes] = useState('');
   const [selectedExistingCustomer, setSelectedExistingCustomer] = useState<string>('');
   const [existingCustomerInfo, setExistingCustomerInfo] = useState<ServiceRecord | null>(null);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
 
   // Service return interval (o'rtacha kelish oralig'i - ixtiyoriy)
   const [visitIntervalDays, setVisitIntervalDays] = useState<number | ''>('');
@@ -215,17 +216,49 @@ export const RecordFormModal: React.FC<RecordFormModalProps> = ({
     });
   };
 
-  // Get unique customers list from existing records
+  // Get unique customers list from existing records (most recent data per customer/plate)
   const uniqueCustomers = useMemo(() => {
     const map = new Map<string, ServiceRecord>();
-    existingRecords.forEach((r) => {
-      const key = r.carPlate.toUpperCase();
-      if (!map.has(key)) {
+    const sorted = [...(existingRecords || [])].sort(
+      (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+    );
+    sorted.forEach((r) => {
+      const plate = (r.carPlate || '').trim().toUpperCase();
+      const name = (r.customerName || '').trim();
+      const key = plate || name;
+      if (key && !map.has(key)) {
         map.set(key, r);
       }
     });
-    return Array.from(map.values());
+    return Array.from(map.values()).sort((a, b) =>
+      (a.customerName || '').localeCompare(b.customerName || '', 'uz')
+    );
   }, [existingRecords]);
+
+  // Filter matching customers when typing at least 3 letters
+  const matchingSearchedCustomers = useMemo(() => {
+    const q = customerSearchQuery.trim().toLowerCase();
+    if (q.length < 3) return [];
+    return uniqueCustomers.filter((cust) => {
+      const name = (cust.customerName || '').toLowerCase();
+      const plate = (cust.carPlate || '').toLowerCase();
+      const phone = (cust.phoneNumber || '').replace(/\s+/g, '');
+      const model = (cust.carModel || '').toLowerCase();
+
+      // Check name prefix, word prefix, or general match
+      const nameWords = name.split(/\s+/);
+      const nameMatchesPrefix = name.startsWith(q) || nameWords.some((w) => w.startsWith(q));
+      const generalMatch = name.includes(q) || plate.includes(q) || phone.includes(q.replace(/\s+/g, '')) || model.includes(q);
+
+      return nameMatchesPrefix || generalMatch;
+    });
+  }, [uniqueCustomers, customerSearchQuery]);
+
+  const handleClearExistingCustomer = () => {
+    setSelectedExistingCustomer('');
+    setExistingCustomerInfo(null);
+    setCustomerSearchQuery('');
+  };
 
   useEffect(() => {
     if (initialData) {
@@ -245,6 +278,7 @@ export const RecordFormModal: React.FC<RecordFormModalProps> = ({
       setNotes(initialData.notes || '');
       setSelectedExistingCustomer('');
       setExistingCustomerInfo(null);
+      setCustomerSearchQuery('');
 
       // Restore visit interval
       setVisitIntervalDays(initialData.visitIntervalDays || '');
@@ -286,6 +320,7 @@ export const RecordFormModal: React.FC<RecordFormModalProps> = ({
       setNotes('');
       setSelectedExistingCustomer('');
       setExistingCustomerInfo(null);
+      setCustomerSearchQuery('');
       setVisitIntervalDays('');
       setIsCustomInterval(false);
       setCustomIntervalInput('');
@@ -496,31 +531,146 @@ export const RecordFormModal: React.FC<RecordFormModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
           {/* Section: Select from Existing Customers */}
+          {/* Section: Select from Existing Customers (Search by 3+ letters + Full Dropdown) */}
           {!initialData && uniqueCustomers.length > 0 && (
-            <div className="p-3.5 rounded-xl bg-blue-950/30 border border-blue-800/60 space-y-2">
-              <label className="block text-xs font-semibold text-blue-300 flex items-center gap-1.5">
-                <History className="w-4 h-4 text-blue-400" />
-                <span>Eski mijozlardan avto-to'ldirish (Ixtiyoriy):</span>
-              </label>
-              <select
-                value={selectedExistingCustomer}
-                onChange={(e) => handleSelectExistingCustomer(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer"
-              >
-                <option value="">-- Bazadagi eski mijozni tanlang... --</option>
-                {uniqueCustomers.map((cust) => (
-                  <option key={cust.id} value={cust.carPlate}>
-                    🚗 {cust.carPlate} - {cust.customerName} ({cust.carModel})
-                  </option>
-                ))}
-              </select>
+            <div className="p-3.5 rounded-xl bg-blue-950/30 border border-blue-800/60 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-blue-300 flex items-center gap-1.5">
+                  <History className="w-4 h-4 text-blue-400" />
+                  <span>Eski mijozlardan avto-to'ldirish (Ixtiyoriy):</span>
+                </label>
+                {(existingCustomerInfo || customerSearchQuery) && (
+                  <button
+                    type="button"
+                    onClick={handleClearExistingCustomer}
+                    className="text-[11px] text-slate-400 hover:text-rose-300 flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Tozalash</span>
+                  </button>
+                )}
+              </div>
 
+              {/* 1. Name Search by First 3+ letters */}
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-blue-400">
+                    <Search className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="text"
+                    value={customerSearchQuery}
+                    onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                    placeholder="Mijoz ismining boshidagi 3 ta harfini kiriting (masalan: Ali...)"
+                    className="w-full pl-9 pr-9 py-2 bg-slate-900 border border-blue-700/60 focus:border-blue-400 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 transition-all"
+                  />
+                  {customerSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomerSearchQuery('')}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white cursor-pointer"
+                      title="Qidiruv matnini tozalash"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Info reminder when 1 or 2 characters are typed */}
+                {customerSearchQuery.trim().length > 0 && customerSearchQuery.trim().length < 3 && (
+                  <div className="text-[11px] text-amber-300/90 flex items-center gap-1 px-1">
+                    <span>💡 Ismning boshidagi kamida 3 ta harfini kiriting (hozir: {customerSearchQuery.trim().length}/3 ta harf).</span>
+                  </div>
+                )}
+
+                {/* Instant matched customers when >= 3 letters typed */}
+                {customerSearchQuery.trim().length >= 3 && (
+                  <div className="rounded-xl border border-blue-800/80 bg-slate-900/95 p-2 space-y-1 max-h-52 overflow-y-auto shadow-lg">
+                    <div className="text-[11px] font-semibold text-blue-300 px-1.5 py-0.5 flex items-center justify-between">
+                      <span>Topilgan mijozlar ({matchingSearchedCustomers.length} ta):</span>
+                      <span className="text-[10px] text-slate-400 font-normal">Avto-to'ldirish uchun ustiga bosing</span>
+                    </div>
+
+                    {matchingSearchedCustomers.length === 0 ? (
+                      <div className="py-3 px-2 text-center text-xs text-slate-400">
+                        "{customerSearchQuery}" bo'yicha mijoz topilmadi. Ismni boshqacha tekshiring yoki quyidagi ro'yxatdan tanlang.
+                      </div>
+                    ) : (
+                      matchingSearchedCustomers.map((cust) => {
+                        const isSelected = selectedExistingCustomer.toUpperCase() === (cust.carPlate || '').toUpperCase();
+                        return (
+                          <button
+                            key={cust.id}
+                            type="button"
+                            onClick={() => {
+                              handleSelectExistingCustomer(cust.carPlate);
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 cursor-pointer ${
+                              isSelected
+                                ? 'bg-blue-600/30 text-blue-100 border border-blue-500 font-semibold'
+                                : 'bg-slate-800/80 hover:bg-blue-900/40 text-slate-200 border border-slate-700/70 hover:border-blue-500/50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <span className="font-bold text-white text-xs">{cust.customerName}</span>
+                              <span className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-700 font-mono text-[10px] text-blue-300 shrink-0">
+                                🚗 {cust.carPlate}
+                              </span>
+                              {cust.carModel && (
+                                <span className="text-[11px] text-slate-400 truncate">({cust.carModel})</span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-mono shrink-0 flex items-center gap-2">
+                              <span>📞 {cust.phoneNumber}</span>
+                              {cust.mileageKm ? (
+                                <span className="text-slate-500 text-[10px]">({cust.mileageKm.toLocaleString()} km)</span>
+                              ) : null}
+                              {isSelected && <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Full Dropdown Selector (Preserved original feature) */}
+              <div className="space-y-1 pt-1">
+                <div className="flex items-center justify-between text-[11px] text-slate-400 px-0.5">
+                  <span>Yoki mavjud ro'yxatdan tanlang:</span>
+                  <span className="text-[10px] text-slate-500 font-mono">Bazada {uniqueCustomers.length} ta mijoz</span>
+                </div>
+                <select
+                  value={selectedExistingCustomer}
+                  onChange={(e) => handleSelectExistingCustomer(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer transition-colors"
+                >
+                  <option value="">-- Bazadagi eski mijozni tanlang... --</option>
+                  {uniqueCustomers.map((cust) => (
+                    <option key={cust.id} value={cust.carPlate}>
+                      🚗 {cust.carPlate} - {cust.customerName} ({cust.carModel || 'Model kiritilmagan'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 3. Successful Auto-fill Notification */}
               {existingCustomerInfo && (
-                <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>
-                    <strong>{existingCustomerInfo.customerName}</strong> ({existingCustomerInfo.carPlate}) ma'lumotlari avto-to'ldirildi! Oxirgi kilometraj: {existingCustomerInfo.mileageKm || 0} km.
-                  </span>
+                <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs flex items-center justify-between gap-2 animate-fadeIn">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>
+                      <strong>{existingCustomerInfo.customerName}</strong> ({existingCustomerInfo.carPlate}) ma'lumotlari avto-to'ldirildi! Oxirgi kilometraj: {existingCustomerInfo.mileageKm || 0} km.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleClearExistingCustomer}
+                    className="text-[11px] text-emerald-400 hover:text-white underline cursor-pointer shrink-0"
+                  >
+                    Bekor qilish
+                  </button>
                 </div>
               )}
             </div>
