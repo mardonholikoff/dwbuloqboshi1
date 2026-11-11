@@ -1,13 +1,17 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { ServiceRecord } from '../types';
 import { createAdminLog } from '../lib/adminSession';
-import { getOverdueOilCustomers } from '../lib/oilUtils';
+import {
+  getOverdueOilCustomers,
+  DEFAULT_OIL_REMINDER_SMS,
+  cleanPhoneForUri,
+  getSmsReminderHref,
+} from '../lib/oilUtils';
 import {
   X,
   Droplet,
   Phone,
   Car,
-  Calendar,
   Clock,
   MessageSquare,
   History,
@@ -15,7 +19,10 @@ import {
   AlertTriangle,
   ChevronRight,
   ShieldAlert,
-  User
+  Send,
+  RotateCcw,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface OverdueOilModalProps {
@@ -35,6 +42,9 @@ export const OverdueOilModal: React.FC<OverdueOilModalProps> = ({
   onNewServiceForCustomer,
   username = 'daewoobuloqboshi',
 }) => {
+  const [smsText, setSmsText] = useState<string>(DEFAULT_OIL_REMINDER_SMS);
+  const [isSmsPreviewOpen, setIsSmsPreviewOpen] = useState<boolean>(false);
+
   useEffect(() => {
     if (isOpen) {
       createAdminLog(
@@ -86,6 +96,52 @@ export const OverdueOilModal: React.FC<OverdueOilModalProps> = ({
           </button>
         </div>
 
+        {/* SMS Notification Template Preview / Editor Banner */}
+        <div className="px-4 py-3 bg-indigo-950/30 border-b border-indigo-800/50 shrink-0 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-indigo-300">
+              <MessageSquare className="w-4 h-4 text-indigo-400 shrink-0" />
+              <span>SMS Xabarnoma Matni (Yuborishda avtomatik joylanadi):</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSmsPreviewOpen(!isSmsPreviewOpen)}
+              className="text-[11px] font-semibold text-indigo-300 hover:text-white bg-indigo-900/50 hover:bg-indigo-800/70 px-2.5 py-1 rounded-lg border border-indigo-700/60 flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <span>{isSmsPreviewOpen ? 'Yopish' : "Matnni o'zgartirish"}</span>
+              {isSmsPreviewOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+
+          {!isSmsPreviewOpen ? (
+            <div className="text-[11px] text-slate-200 whitespace-pre-line font-mono bg-slate-950/80 px-3 py-2 rounded-xl border border-slate-800 leading-relaxed">
+              {smsText}
+            </div>
+          ) : (
+            <div className="space-y-2 pt-1">
+              <textarea
+                rows={5}
+                value={smsText}
+                onChange={(e) => setSmsText(e.target.value)}
+                className="w-full p-2.5 bg-slate-950 border border-indigo-500/60 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
+              />
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span>Har bir mijozda &quot;SMS xabarnoma yuborish&quot; bosilganda shu matn avtomatik joylanadi.</span>
+                {smsText !== DEFAULT_OIL_REMINDER_SMS && (
+                  <button
+                    type="button"
+                    onClick={() => setSmsText(DEFAULT_OIL_REMINDER_SMS)}
+                    className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Asl holatiga qaytarish</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Customer Cards List */}
         <div className="p-4 overflow-y-auto space-y-3 flex-1">
           {filteredOverdueList.length === 0 ? (
@@ -101,7 +157,8 @@ export const OverdueOilModal: React.FC<OverdueOilModalProps> = ({
             filteredOverdueList.map((item) => {
               const { key, plate, customerName, phoneNumber, carModel, latestOilRecord, daysAgo, thresholdDays, isCustomInterval, totalServices } = item;
               const formattedPhone = phoneNumber || latestOilRecord.phoneNumber || '';
-              const cleanPhone = formattedPhone.replace(/\s+/g, '');
+              const cleanPhone = cleanPhoneForUri(formattedPhone);
+              const smsHref = getSmsReminderHref(formattedPhone, smsText);
 
               // Determine urgency level badge
               let UrgencyBadge = (
@@ -229,16 +286,41 @@ export const OverdueOilModal: React.FC<OverdueOilModalProps> = ({
                       <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
                     </button>
 
-                    {/* Quick Call & New Service Buttons */}
-                    <div className="flex items-center gap-2">
+                    {/* Quick Call, SMS Notification & New Service Buttons */}
+                    <div className="flex items-center gap-2 flex-wrap">
                       {formattedPhone && (
-                        <a
-                          href={`tel:${cleanPhone}`}
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow transition-all cursor-pointer"
-                        >
-                          <Phone className="w-3.5 h-3.5 text-white" />
-                          <span>Qo'ng'iroq</span>
-                        </a>
+                        <>
+                          <a
+                            href={`tel:${cleanPhone}`}
+                            onClick={() => {
+                              createAdminLog(
+                                "Qo'ng'iroq Bosildi",
+                                `Mijoz: ${customerName} (${plate}) raqamiga (${formattedPhone}) qo'ng'iroq qilish bosildi`,
+                                username
+                              );
+                            }}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow transition-all cursor-pointer"
+                          >
+                            <Phone className="w-3.5 h-3.5 text-white" />
+                            <span>Qo'ng'iroq</span>
+                          </a>
+
+                          <a
+                            href={smsHref}
+                            onClick={() => {
+                              createAdminLog(
+                                "SMS Xabarnoma Yuborish Bosildi",
+                                `Mijoz: ${customerName} (${plate}) raqamiga (${formattedPhone}) SMS xabarnoma yuborish oynasi ochildi`,
+                                username
+                              );
+                            }}
+                            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+                            title="SMS ilovasini mijoz raqami va tayyor xabar matni bilan avtomatik ochish"
+                          >
+                            <Send className="w-3.5 h-3.5 text-slate-950" />
+                            <span>SMS xabarnoma yuborish</span>
+                          </a>
+                        </>
                       )}
 
                       <button

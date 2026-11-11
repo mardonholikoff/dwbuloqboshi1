@@ -29,6 +29,9 @@ import {
 } from '../lib/firebase';
 import { AdminRecordsManager } from './AdminRecordsManager';
 import { CustomerCrmSection } from './CustomerCrmSection';
+import { StatsBar } from './StatsBar';
+import { OverdueOilModal } from './OverdueOilModal';
+import { CustomerHistoryModal } from './CustomerHistoryModal';
 
 interface AdminStandaloneDashboardProps {
   username: string;
@@ -59,6 +62,9 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
   const [logPeriod, setLogPeriod] = useState<'today' | 'this_month' | 'all'>('all');
   const [logUserFilter, setLogUserFilter] = useState<'daewoobuloqboshi' | 'all'>('daewoobuloqboshi');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isOverdueOilModalOpen, setIsOverdueOilModalOpen] = useState<boolean>(false);
+  const [selectedCustomerPlate, setSelectedCustomerPlate] = useState<string | null>(null);
+  const [selectedCustomerName, setSelectedCustomerName] = useState<string | undefined>(undefined);
 
   const myDeviceId = getOrCreateDeviceId();
 
@@ -306,6 +312,12 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
 
       {/* Main Container */}
       <main className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-16 flex-1 w-full space-y-4 sm:space-y-6">
+        {/* Moy Almashtirish Vaqti Kelganlar Stats Bar */}
+        <StatsBar
+          records={records}
+          onOpenOverdueOilModal={() => setIsOverdueOilModalOpen(true)}
+        />
+
         {/* Navigation Tabs - Compact, Responsive Grid (NO HORIZONTAL SCROLL ON ANY SCREEN) */}
         <div className="bg-slate-900 p-1.5 sm:p-2 rounded-2xl border border-slate-800 grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-2 shadow-xl">
           <button
@@ -643,6 +655,41 @@ export const AdminStandaloneDashboard: React.FC<AdminStandaloneDashboardProps> =
           </div>
         </footer>
       </main>
+
+      {/* Modal: Overdue Oil Change Customers & SMS Notification */}
+      <OverdueOilModal
+        isOpen={isOverdueOilModalOpen}
+        onClose={() => setIsOverdueOilModalOpen(false)}
+        records={records}
+        username={username}
+        onSelectCustomer={(plate, name) => {
+          setSelectedCustomerPlate(plate);
+          setSelectedCustomerName(name);
+        }}
+        onNewServiceForCustomer={() => {
+          setIsOverdueOilModalOpen(false);
+          setActiveTab('records');
+        }}
+      />
+
+      {/* Modal: Customer History Timeline */}
+      <CustomerHistoryModal
+        isOpen={Boolean(selectedCustomerPlate)}
+        customerPlate={selectedCustomerPlate}
+        customerName={selectedCustomerName}
+        records={records}
+        username={username}
+        onClose={() => setSelectedCustomerPlate(null)}
+        onNewServiceForCustomer={() => {
+          setSelectedCustomerPlate(null);
+          setActiveTab('records');
+        }}
+        onEditRecord={() => {
+          setSelectedCustomerPlate(null);
+          setActiveTab('records');
+        }}
+        onPrintRecord={() => {}}
+      />
     </div>
   );
 };

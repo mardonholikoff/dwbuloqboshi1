@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { ServiceRecord } from '../types';
-import { X, User, Phone, Car, Gauge, Wrench, Calendar, DollarSign, Printer, Plus, Edit2, Clock, CheckCircle2, AlertTriangle, Droplet } from 'lucide-react';
+import { X, User, Phone, Car, Gauge, Wrench, Calendar, DollarSign, Printer, Plus, Edit2, Clock, CheckCircle2, AlertTriangle, Droplet, Send } from 'lucide-react';
 import { createAdminLog } from '../lib/adminSession';
+import { cleanPhoneForUri, getSmsReminderHref } from '../lib/oilUtils';
 
 interface CustomerHistoryModalProps {
   customerPlate: string | null;
@@ -74,14 +75,33 @@ export const CustomerHistoryModal: React.FC<CustomerHistoryModalProps> = ({
               <User className="w-5 h-5 text-blue-400" />
               <span>{latestRecord.customerName}</span>
             </h2>
-            <div className="flex items-center gap-4 text-xs text-slate-400 pt-1">
-              <a
-                href={`tel:${latestRecord.phoneNumber.replace(/\s+/g, '')}`}
-                className="flex items-center gap-1.5 text-blue-400 hover:underline font-mono font-semibold"
-              >
-                <Phone className="w-3.5 h-3.5" />
-                {latestRecord.phoneNumber}
-              </a>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 pt-1">
+              {latestRecord.phoneNumber && (
+                <>
+                  <a
+                    href={`tel:${cleanPhoneForUri(latestRecord.phoneNumber)}`}
+                    className="flex items-center gap-1.5 text-blue-400 hover:underline font-mono font-semibold"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    {latestRecord.phoneNumber}
+                  </a>
+                  <a
+                    href={getSmsReminderHref(latestRecord.phoneNumber)}
+                    onClick={() => {
+                      createAdminLog(
+                        "SMS Xabarnoma Yuborish Bosildi",
+                        `Mijoz tarixidan: ${latestRecord.customerName} (${latestRecord.carPlate}) raqamiga SMS xabarnoma yuborish bosildi`,
+                        username
+                      );
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[11px] flex items-center gap-1 shadow transition-all cursor-pointer"
+                    title="Moy almashtirish eslatmasi SMS xabarnomasini yuborish"
+                  >
+                    <Send className="w-3 h-3 text-slate-950" />
+                    <span>SMS xabarnoma yuborish</span>
+                  </a>
+                </>
+              )}
               <span className="text-slate-600">•</span>
               <span>Jami servislar: <strong className="text-white">{totalVisits} ta</strong></span>
             </div>

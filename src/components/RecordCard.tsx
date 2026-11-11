@@ -1,6 +1,7 @@
 import React from 'react';
 import { ServiceRecord } from '../types';
-import { User, Phone, Car, Gauge, Wrench, AlertTriangle, Printer, Edit2, Trash2, Calendar, CheckCircle2, Clock } from 'lucide-react';
+import { User, Phone, Car, Gauge, Wrench, AlertTriangle, Printer, Edit2, Trash2, Calendar, CheckCircle2, Clock, Send } from 'lucide-react';
+import { cleanPhoneForUri, getSmsReminderHref } from '../lib/oilUtils';
 
 interface RecordCardProps {
   record: ServiceRecord;
@@ -116,20 +117,32 @@ export const RecordCard: React.FC<RecordCardProps> = ({
           </div>
         </button>
 
-        {/* Phone Number */}
-        <div className="p-2.5 rounded-xl bg-slate-950/50 border border-slate-800/80 flex items-center gap-2.5">
-          <div className="p-2 rounded-lg bg-indigo-950/60 text-indigo-400 shrink-0">
-            <Phone className="w-4 h-4" />
+        {/* Phone Number & SMS */}
+        <div className="p-2.5 rounded-xl bg-slate-950/50 border border-slate-800/80 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="p-2 rounded-lg bg-indigo-950/60 text-indigo-400 shrink-0">
+              <Phone className="w-4 h-4" />
+            </div>
+            <div className="overflow-hidden">
+              <span className="text-[10px] text-slate-400 block font-medium uppercase">Telefon Nomer</span>
+              <a
+                href={`tel:${cleanPhoneForUri(record.phoneNumber)}`}
+                className="font-semibold text-blue-400 hover:underline truncate block"
+              >
+                {record.phoneNumber}
+              </a>
+            </div>
           </div>
-          <div className="overflow-hidden">
-            <span className="text-[10px] text-slate-400 block font-medium uppercase">Telefon Nomer</span>
+          {record.phoneNumber && (
             <a
-              href={`tel:${record.phoneNumber.replace(/\s+/g, '')}`}
-              className="font-semibold text-blue-400 hover:underline truncate block"
+              href={getSmsReminderHref(record.phoneNumber)}
+              title="SMS xabarnoma yuborish"
+              className="px-2 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/40 font-bold text-[10px] flex items-center gap-1 transition-all shrink-0 cursor-pointer"
             >
-              {record.phoneNumber}
+              <Send className="w-3 h-3" />
+              <span>SMS</span>
             </a>
-          </div>
+          )}
         </div>
       </div>
 

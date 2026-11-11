@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { ServiceRecord, CustomerUpdatePayload } from '../types';
 import { createAdminLog } from '../lib/adminSession';
+import { cleanPhoneForUri, getSmsReminderHref } from '../lib/oilUtils';
 import {
   Users,
   Search,
@@ -27,7 +28,8 @@ import {
   ExternalLink,
   Tag,
   ChevronDown,
-  AlertCircle
+  AlertCircle,
+  Send
 } from 'lucide-react';
 
 interface CustomerCrmSectionProps {
@@ -733,12 +735,22 @@ export const CustomerCrmSection: React.FC<CustomerCrmSectionProps> = ({
 
               <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 font-medium">
                 <a
-                  href={`tel:${activeCustomer.phoneNumber.replace(/\s+/g, '')}`}
+                  href={`tel:${cleanPhoneForUri(activeCustomer.phoneNumber)}`}
                   className="flex items-center gap-1.5 text-blue-400 hover:underline font-mono font-semibold"
                 >
                   <Phone className="w-3.5 h-3.5" />
                   <span>{activeCustomer.phoneNumber}</span>
                 </a>
+                {activeCustomer.phoneNumber && (
+                  <a
+                    href={getSmsReminderHref(activeCustomer.phoneNumber)}
+                    className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[11px] flex items-center gap-1 shadow transition-all cursor-pointer"
+                    title="SMS xabarnoma yuborish"
+                  >
+                    <Send className="w-3 h-3 text-slate-950" />
+                    <span>SMS xabarnoma yuborish</span>
+                  </a>
+                )}
                 <span className="text-slate-700">•</span>
                 <span className="flex items-center gap-1">
                   <Car className="w-3.5 h-3.5 text-slate-500" />
@@ -1358,14 +1370,25 @@ export const CustomerCrmSection: React.FC<CustomerCrmSectionProps> = ({
                       <td className="py-3 px-3 font-extrabold text-white group-hover:text-blue-300">
                         {c.customerName}
                       </td>
-                      <td className="py-3 px-3 font-mono text-slate-300 whitespace-nowrap">
-                        <a
-                          href={`tel:${c.phoneNumber.replace(/\s+/g, '')}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="hover:underline text-blue-400"
-                        >
-                          {c.phoneNumber}
-                        </a>
+                      <td className="py-3 px-3 font-mono text-slate-300 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={`tel:${cleanPhoneForUri(c.phoneNumber)}`}
+                            className="hover:underline text-blue-400"
+                          >
+                            {c.phoneNumber}
+                          </a>
+                          {c.phoneNumber && (
+                            <a
+                              href={getSmsReminderHref(c.phoneNumber)}
+                              className="px-1.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/40 font-sans font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer"
+                              title="SMS xabarnoma yuborish"
+                            >
+                              <Send className="w-2.5 h-2.5" />
+                              <span>SMS</span>
+                            </a>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-3 whitespace-nowrap">
                         <span className="px-2.5 py-1 rounded-lg bg-slate-950 text-blue-400 font-mono font-extrabold text-xs border border-slate-800">

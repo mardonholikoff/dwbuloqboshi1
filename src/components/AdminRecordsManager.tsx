@@ -23,10 +23,12 @@ import {
   Sparkles,
   ChevronDown,
   Check,
-  RotateCcw
+  RotateCcw,
+  Send
 } from 'lucide-react';
 import { ServiceRecord, RecordStatus, DatabaseWipeRequest } from '../types';
 import { createAdminLog } from '../lib/adminSession';
+import { cleanPhoneForUri, getSmsReminderHref } from '../lib/oilUtils';
 import {
   subscribeToWipeRequest,
   startDatabaseWipeRequest,
@@ -1922,13 +1924,23 @@ export const AdminRecordsManager: React.FC<AdminRecordsManagerProps> = ({
                           </div>
                           <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
                             {record.phoneNumber && (
-                              <a
-                                href={`tel:${record.phoneNumber}`}
-                                className="text-blue-400 hover:underline flex items-center gap-1 font-mono"
-                              >
-                                <Phone className="w-3 h-3" />
-                                {record.phoneNumber}
-                              </a>
+                              <>
+                                <a
+                                  href={`tel:${cleanPhoneForUri(record.phoneNumber)}`}
+                                  className="text-blue-400 hover:underline flex items-center gap-1 font-mono"
+                                >
+                                  <Phone className="w-3 h-3" />
+                                  {record.phoneNumber}
+                                </a>
+                                <a
+                                  href={getSmsReminderHref(record.phoneNumber)}
+                                  className="px-2 py-0.5 rounded-md bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/40 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer"
+                                  title="SMS xabarnoma yuborish"
+                                >
+                                  <Send className="w-2.5 h-2.5" />
+                                  <span>SMS xabarnoma</span>
+                                </a>
+                              </>
                             )}
                             <span>•</span>
                             <span className="flex items-center gap-1 text-slate-400 font-mono text-[11px]">
@@ -2371,10 +2383,18 @@ export const AdminRecordsManager: React.FC<AdminRecordsManagerProps> = ({
                               <>
                                 <span>•</span>
                                 <a
-                                  href={`tel:${customer.phoneNumber}`}
+                                  href={`tel:${cleanPhoneForUri(customer.phoneNumber)}`}
                                   className="text-blue-400 hover:underline font-mono"
                                 >
                                   {customer.phoneNumber}
+                                </a>
+                                <a
+                                  href={getSmsReminderHref(customer.phoneNumber)}
+                                  className="px-2 py-0.5 rounded-md bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/40 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer"
+                                  title="SMS xabarnoma yuborish"
+                                >
+                                  <Send className="w-2.5 h-2.5" />
+                                  <span>SMS xabarnoma</span>
                                 </a>
                               </>
                             )}

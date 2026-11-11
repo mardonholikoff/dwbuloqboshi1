@@ -1,5 +1,37 @@
 import { ServiceRecord } from '../types';
 
+export const DEFAULT_OIL_REMINDER_SMS = `Assalomu alaykum, hurmatli mijoz!
+Avtomobilingiz moyini almashtirish vaqti kelgan bo‘lishi mumkin. Dvigatelingizni asrang, moy almashtirish muddatini o‘tkazib yubormang!
+Manzil: Ko‘prikboshi, soy oldi — Zamena masla
+Telefon: 99 904 63 92
+Sizni kutib qolamiz!`;
+
+/**
+ * Clean and normalize phone number for tel: and sms: URIs
+ */
+export function cleanPhoneForUri(phone: string): string {
+  if (!phone) return '';
+  const cleaned = phone.replace(/[^\d+]/g, '');
+  const digitsOnly = cleaned.replace(/\D/g, '');
+  if (digitsOnly.length === 9) {
+    return `+998${digitsOnly}`;
+  }
+  if (digitsOnly.length === 12 && digitsOnly.startsWith('998')) {
+    return `+${digitsOnly}`;
+  }
+  return cleaned;
+}
+
+/**
+ * Construct native SMS URI with pre-filled recipient phone number and message body
+ * Works across Android and iOS devices (sms:+998...?body=...)
+ */
+export function getSmsReminderHref(phone: string, customMessage?: string): string {
+  const cleanPhone = cleanPhoneForUri(phone);
+  const message = customMessage ?? DEFAULT_OIL_REMINDER_SMS;
+  return `sms:${cleanPhone}?body=${encodeURIComponent(message)}`;
+}
+
 /**
  * Check if a service record is associated with an oil change
  */

@@ -3,7 +3,7 @@ import { ServiceRecord, RecordStatusFilter, CustomerUpdatePayload } from '../typ
 import { RecordCard } from './RecordCard';
 import { CustomerCrmSection } from './CustomerCrmSection';
 import { createAdminLog } from '../lib/adminSession';
-import { checkIsOilRecord, getDaysAgo } from '../lib/oilUtils';
+import { checkIsOilRecord, getDaysAgo, cleanPhoneForUri, getSmsReminderHref } from '../lib/oilUtils';
 import {
   Search,
   Filter,
@@ -23,7 +23,8 @@ import {
   X,
   Eye,
   EyeOff,
-  Users
+  Users,
+  Send
 } from 'lucide-react';
 
 interface RecordsListProps {
@@ -691,14 +692,33 @@ export const RecordsList: React.FC<RecordsListProps> = ({
                         </button>
                       </td>
 
-                      {/* Phone Number */}
+                      {/* Phone Number & Quick SMS */}
                       <td className="py-3.5 px-3 border-r border-slate-700 whitespace-nowrap text-center font-mono">
-                        <a
-                          href={`tel:${record.phoneNumber.replace(/\s+/g, '')}`}
-                          className="text-blue-400 hover:text-blue-300 font-medium"
-                        >
-                          {record.phoneNumber}
-                        </a>
+                        <div className="flex flex-col items-center gap-1">
+                          <a
+                            href={`tel:${cleanPhoneForUri(record.phoneNumber)}`}
+                            className="text-blue-400 hover:text-blue-300 font-medium"
+                          >
+                            {record.phoneNumber}
+                          </a>
+                          {record.phoneNumber && (
+                            <a
+                              href={getSmsReminderHref(record.phoneNumber)}
+                              onClick={() => {
+                                createAdminLog(
+                                  "SMS Xabarnoma Yuborish Bosildi",
+                                  `Jadvaldan: ${record.customerName} (${record.carPlate}) raqamiga SMS xabarnoma yuborish bosildi`,
+                                  username
+                                );
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/40 font-sans font-bold text-[10px] transition-all cursor-pointer"
+                              title="SMS xabarnoma yuborish"
+                            >
+                              <Send className="w-2.5 h-2.5" />
+                              <span>SMS xabarnoma</span>
+                            </a>
+                          )}
+                        </div>
                       </td>
 
                       {/* Mileage Km */}
